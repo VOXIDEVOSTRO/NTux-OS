@@ -58,6 +58,21 @@ void draw_scaled_char_lim(volatile struct limine_framebuffer* fb, int x, int y, 
     }
 }
 
+void draw_scaled_text_lim(volatile struct limine_framebuffer* fb, int x, int y, const char* str, uint32_t color, int scale) {
+    int cursor_x = x;
+    while (*str) {
+        if (*str == '\n') {
+            cursor_x = x;
+            y += 8 * scale; 
+        } else {
+            draw_scaled_char_lim(fb, cursor_x, y, font8x8_basic[(int)(*str)], color, scale);
+            cursor_x += 8 * scale; 
+        }
+        str++;
+    }
+}
+
+
 void draw_square_lim(volatile struct limine_framebuffer* fb, int x, int y, int size, uint32_t color) {
     for (int yy = 0; yy < size; yy++)
         for (int xx = 0; xx < size; xx++)

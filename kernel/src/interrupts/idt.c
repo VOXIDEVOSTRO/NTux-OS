@@ -37,6 +37,10 @@ void idt_init(void) {
         idt[i].zero         = 0;
     }
 
+    for (int i = 0; i < IDT_ENTRIES; i++) {
+        idt_set_entry(i, 0);
+    }
+
     idt_descriptor.limit = sizeof(struct idt_entry) * IDT_ENTRIES - 1;
     idt_descriptor.base  = (uint64_t)&idt;
 
