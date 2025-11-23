@@ -57,3 +57,13 @@ uint16_t sct1[] = {
     0, 0, 0, 0x1200, // unprintable = f11
     0x1300           // unprintable = f12
 };
+
+uint16_t detect_special_key(uint8_t scancode) {
+    if (scancode >= sizeof(sct1)/sizeof(sct1[0])) return 0;
+    uint16_t key = sct1[scancode];
+
+    if (key & 0xFF00) {
+        return key;    }
+
+    return 0;
+}

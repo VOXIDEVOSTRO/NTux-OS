@@ -47,7 +47,7 @@ void init_fb(void) {
     shell_cursor = &shell_cursor_struct;
     init_cursor(shell_cursor, fb_width, fb_height);
     init_kprint_global(framebuffer, shell_cursor, color);
-    
+
     kprint_ok("frambuffer init");
 }
 
@@ -93,11 +93,19 @@ void init_kernel(void) {
     kprint_ok("Kernel initialized.");
 }
 
+
+
 void kmain(void) {
     init_kernel();
+    kprint("Welcome to NTux-OS!\n");
     while (1) {
         uint8_t sc = ps2_read_data();
         uint16_t key = sct1[sc];
+        uint16_t special_key = detect_special_key(sc);
+        if (key < 0x0100) {
+            char c = (char)key;
+            kprintcolor(&c, COLOR_LIGHT_GREEN);
+        } 
         __asm__ volatile("hlt");
     }
 }

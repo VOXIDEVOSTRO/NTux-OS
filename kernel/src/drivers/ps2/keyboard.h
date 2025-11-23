@@ -30,7 +30,7 @@ void ps2_init();
 
 // Read keyboard data
 uint8_t ps2_read_data();
-
+uint16_t detect_special_key(uint8_t scancode);
 
 
 //array containing ascii values(if unprintable -> starting at 0x0100 increasing in order of table) indexable by scancodes from table 1
