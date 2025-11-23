@@ -38,20 +38,11 @@ void idt_init(void) {
         idt[i].offset_high  = 0;
         idt[i].zero         = 0;
     }
-
-    // Set default IDT entries to 0
-    for (int i = 0; i < IDT_ENTRIES; i++) {
-        idt_set_entry(i, 0);
-    }
-
     // Register IRQ handlers (from IRQ 32 to IRQ 47)
     for (int i = 0; i < 16; i++) {
-        idt_set_entry(32 + i, irq_handler_c);
-       // irq_register_handler(32 + i, irq_handler_c);
+        idt_set_entry(32 + i, irq_stub_table[i]);
     }
-
     
-    // Inform user that handlers are registered
     kprint_ok("Registered IRQ handlers in IDT");
 
     // Set up IDT descriptor
