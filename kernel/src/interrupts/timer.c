@@ -12,11 +12,13 @@ void timer_handler(void) {
     if (tick_count % 100 == 0) {
         kprint("Timer ticked 100 times!\n");
     }
+    pic_send_eoi(0);
 
 }
 void init_timer() {
     timer_pit_config();
     irq_register_handler(0, timer_handler);
+    kprint_ok("Timer initialized");
 }
 
 void sleep(uint32_t ticks) {
