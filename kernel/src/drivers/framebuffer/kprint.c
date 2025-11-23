@@ -64,14 +64,14 @@ void kprint(const char* text) {
     }
 }
 
-void kprintcolor(const char* text,uint32_t colooor){
+void kprintcolor(const char* text,uint32_t color){
         const char* ptr = text;
     while (*ptr) {
         if (*ptr == '\n') {
             g_printer.cursor->x = 0;
             g_printer.cursor->y += g_printer.cursor->char_height;
         } else {
-            put_char_with_cursor_lim(g_printer.fb, g_printer.cursor, *ptr, colooor);
+            put_char_with_cursor_lim(g_printer.fb, g_printer.cursor, *ptr, color);
         }
         ptr++;
     }
@@ -134,4 +134,16 @@ void kprint_error(const char* text){
     kprint("]\n");
 }
 
-
+void trigger_blue_screen(void){
+    clear_screen_lim(g_printer.fb, COLOR_LIGHT_BLUE_SCREEN_BG);
+    g_printer.cursor->x = 3;
+    g_printer.cursor->y = 10;
+    kprint(":(\n");
+    kprint("\n\n");
+    kprint("A critical error has occurred. System halted.\ns");
+    kprint_error("System will not continue.");
+    kprint("Please restart your computer.\n");
+    for(;;){
+        __asm__ volatile("hlt");
+    }
+}

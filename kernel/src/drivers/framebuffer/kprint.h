@@ -26,5 +26,6 @@ void kprintcolor_uint32(uint32_t num, uint32_t color);
 void kprintcolorhex(uint32_t num, uint32_t color);
 void kprint_ok(const char* text);
 void kprint_error(const char* text);
+void trigger_blue_screen(void);
 
 #endif

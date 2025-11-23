@@ -8,10 +8,6 @@ static uint64_t tick_count = 0;
 
 void timer_handler(void) {
     tick_count++;
-
-    if (tick_count % 100 == 0) {
-        kprint("Timer ticked 100 times!\n");
-    }
     pic_send_eoi(0);
 
 }

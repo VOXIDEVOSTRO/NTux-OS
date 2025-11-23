@@ -15,6 +15,9 @@
 #include <interrupts/irq.h> 
 #include <interrupts/timer.h> 
 
+//driver includes
+#include <drivers/ps2/keyboard.h>
+
 
 static volatile struct limine_framebuffer* framebuffer;
 static int fb_width, fb_height;
@@ -27,6 +30,8 @@ volatile struct limine_framebuffer_request framebuffer_request = {
     .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
     .revision = 0
 };
+
+
 
 void init_fb(void) {
     if (framebuffer_request.response == NULL ||
@@ -42,7 +47,7 @@ void init_fb(void) {
     shell_cursor = &shell_cursor_struct;
     init_cursor(shell_cursor, fb_width, fb_height);
     init_kprint_global(framebuffer, shell_cursor, color);
-
+    
     kprint_ok("frambuffer init");
 }
 
@@ -67,7 +72,7 @@ void init_interrupts(void) {
         init_cursor(shell_cursor, fb_width, fb_height);
         init_kprint_global(framebuffer, shell_cursor, color);
         kprint_error("interrupts are not enabled");
-        clear_screen_lim(framebuffer, COLOR_BLUE);
+        clear_screen_lim(framebuffer, COLOR_LIGHT_BLUE_SCREEN_BG);
         kprint(":(\n\n");
         kprint_error("Critical Error: Interrupts failed to enable.\nSystem Halted.");
         __asm__ volatile ("hlt");
@@ -75,18 +80,24 @@ void init_interrupts(void) {
     
 }
 
+void init_drivers(void) {
+    ps2_init();
+    kprint_ok("PS/2 controller initialized");
+}
+
 void init_kernel(void) {
     init_fb();
     init_interrupts();
-
-    sleep_s(5);
+    init_drivers();
+    sleep_s(1);
     kprint_ok("Kernel initialized.");
 }
 
 void kmain(void) {
     init_kernel();
-
-    for(;;){
-        __asm__ volatile ("hlt");
+    while (1) {
+        uint8_t sc = ps2_read_data();
+        uint16_t key = sct1[sc];
+        __asm__ volatile("hlt");
     }
 }

@@ -46,27 +46,29 @@ void draw_text_lim(volatile struct limine_framebuffer* fb, int x, int y, const c
 
 
 
-void draw_scaled_char_lim(volatile struct limine_framebuffer* fb, int x, int y, const char* char_lines[5], uint32_t color, int scale) {
-    for (int row = 0; row < 5; row++) {
-        const char* line = char_lines[row];
-        for (int col = 0; line[col]; col++) {
-            if (line[col] != ' ')
-                for (int dy = 0; dy < scale; dy++)
-                    for (int dx = 0; dx < scale; dx++)
+void draw_scaled_char_lim(volatile struct limine_framebuffer* fb, int x, int y, const char* char_lines[8], uint32_t color, int scale) {
+    for (int row = 0; row < 8; row++) {   
+        uint8_t bits = font8x8_basic[(int)(*char_lines)][row];
+        for (int col = 0; col < 8; col++) {  
+            if (bits & (1 << col)) {  
+            for (int dy = 0; dy < scale; dy++) {
+                    for (int dx = 0; dx < scale; dx++) {
                         put_pixel_lim(fb, x + col * scale + dx, y + row * scale + dy, color);
+                    }
+                }
+            }
         }
     }
 }
-
 void draw_scaled_text_lim(volatile struct limine_framebuffer* fb, int x, int y, const char* str, uint32_t color, int scale) {
     int cursor_x = x;
     while (*str) {
-        if (*str == '\n') {
+        if (*str == '\n') {  
             cursor_x = x;
-            y += 8 * scale; 
+            y += 8 * scale;  
         } else {
-            draw_scaled_char_lim(fb, cursor_x, y, font8x8_basic[(int)(*str)], color, scale);
-            cursor_x += 8 * scale; 
+            draw_scaled_char_lim(fb, cursor_x, y, font8x8_basic[(int)(*str)], color, scale);  
+            cursor_x += 8 * scale;  
         }
         str++;
     }

@@ -1,5 +1,6 @@
 #include "idt.h"
 #include <interrupts/irq.h>
+#include <interrupts/isr.h>
 #include <interrupts/timer.h>
 #define IDT_ENTRIES 256
 
@@ -37,6 +38,10 @@ void idt_init(void) {
         idt[i].offset_mid   = 0;
         idt[i].offset_high  = 0;
         idt[i].zero         = 0;
+    }
+    // Register ISR handlers (from Interrupt 0 to Interrupt 31)
+    for (int i = 0; i < 256; i++) {
+        idt_set_entry(i, (uint64_t)isr_handler);
     }
     // Register IRQ handlers (from IRQ 32 to IRQ 47)
     for (int i = 0; i < 16; i++) {
