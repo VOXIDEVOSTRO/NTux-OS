@@ -78,7 +78,8 @@ void init_interrupts(void) {
 void init_kernel(void) {
     init_fb();
     init_interrupts();
-    sleep(100);
+
+    sleep_s(5);
     kprint_ok("Kernel initialized.");
 }
 

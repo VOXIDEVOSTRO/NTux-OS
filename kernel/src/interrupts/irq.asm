@@ -20,6 +20,7 @@ irq_stub_table:
 global irq_stub_%1
 irq_stub_%1:
     ; Push IRQ number
+    cli
     push qword %1  ; Push IRQ Nummer auf den Stack
 
     ; Save registers
@@ -29,34 +30,54 @@ irq_stub_%1:
     push rdx
     push rsi
     push rdi
+    push rbp
     push r8
     push r9
     push r10
     push r11
+    push r12
+    push r13
+    push r14
+    push r15
 
     mov rdi, rsp          ; Argument: pointer to saved regs
     call irq_handler_c    ; Call C-IRQ-Handler
 
     ; Restore registers
+    pop r15
+    pop r14
+    pop r13
+    pop r12
     pop r11
     pop r10
     pop r9
     pop r8
+    pop rbp
     pop rdi
     pop rsi
     pop rdx
     pop rcx
     pop rbx
     pop rax
-
     add rsp, 8            ; Entferne IRQ Nummer vom Stack
 
+    sti
     iretq                 ; Rückkehr von Interrupt
 %endmacro
 
-; Generiere alle 16 IRQ-Stubs
-%assign i 0
-%rep 16
-    IRQ_STUB i
-%assign i i+1
-%endrep
+IRQ_STUB 0
+IRQ_STUB 1
+IRQ_STUB 2
+IRQ_STUB 3
+IRQ_STUB 4
+IRQ_STUB 5
+IRQ_STUB 6
+IRQ_STUB 7
+IRQ_STUB 8
+IRQ_STUB 9
+IRQ_STUB 10
+IRQ_STUB 11
+IRQ_STUB 12
+IRQ_STUB 13
+IRQ_STUB 14
+IRQ_STUB 15

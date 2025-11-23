@@ -13,14 +13,14 @@ void irq_register_handler(int irq, void (*handler)(void)) {
 }
 
 void irq_handler_c(uint64_t *stack) {
-    int irq = (int)stack[0]; 
+    int irq = (int)stack[0];
 
-    if (irq_handlers[irq]) {
-        irq_handlers[irq]();  
+    if (irq >= 0 && irq < 16 && irq_handlers[irq]) {
+        irq_handlers[irq]();
     } else {
         kprint_error("Unhandled IRQ: ");
-        kprint_int(irq);  
+        kprint_int(irq);
     }
 
-    pic_send_eoi(irq);  
+    pic_send_eoi(irq);
 }
