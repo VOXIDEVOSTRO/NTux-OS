@@ -144,7 +144,10 @@ void init_kernel(void) {
     init_drivers();
     init_mem();
     init_ramfs_test();
-    sleep_s(1);
+    for (int i = 0; i < 900; i++){    
+        sleep_s(1);
+        kprint_ok("1 second passed");
+    }
     kprint_ok("Kernel initialized.");
 }
 
