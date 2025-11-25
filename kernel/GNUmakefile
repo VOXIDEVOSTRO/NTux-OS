@@ -32,6 +32,12 @@ else
     CC := cc
 endif
 
+# User controllable Assembler (for *.S files).
+ASM := $(TOOLCHAIN_PREFIX)as
+
+# User controllable NASM assembler command (for *.asm files).
+NASM := nasm
+
 # User controllable linker command.
 LD := $(TOOLCHAIN_PREFIX)ld
 
@@ -39,6 +45,7 @@ LD := $(TOOLCHAIN_PREFIX)ld
 ifeq ($(TOOLCHAIN),llvm)
     CC := clang
     LD := ld.lld
+    ASM := clang -c
 endif
 
 # User controllable C flags.
@@ -197,18 +204,21 @@ bin-$(ARCH)/$(OUTPUT): GNUmakefile linker-scripts/$(ARCH).lds $(OBJ)
 # Compilation rules for *.c files.
 obj-$(ARCH)/%.c.o: %.c GNUmakefile
 	mkdir -p "$(dir $@)"
+	$(info [CC] $<)  # This prints the command before running
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
-# Compilation rules for *.S files.
+# Compilation rules for *.S files (Assembly files).
 obj-$(ARCH)/%.S.o: %.S GNUmakefile
 	mkdir -p "$(dir $@)"
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+	$(info [ASM] $<)  # This prints the command before running
+	$(ASM) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 ifeq ($(ARCH),x86_64)
-# Compilation rules for *.asm (nasm) files.
+# Compilation rules for *.asm files (NASM).
 obj-$(ARCH)/%.asm.o: %.asm GNUmakefile
 	mkdir -p "$(dir $@)"
-	nasm $(NASMFLAGS) $< -o $@
+	$(info [NASM] $<)  # This prints the command before running
+	$(NASM) $(NASMFLAGS) $< -o $@
 endif
 
 # Remove object files and the final executable.

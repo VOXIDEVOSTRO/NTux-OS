@@ -2,6 +2,7 @@
     "files.associations": {
         "stdint.h": "c",
         "kprint.h": "c",
-        "idt.h": "c"
+        "idt.h": "c",
+        "string.h": "c"
     }
 }

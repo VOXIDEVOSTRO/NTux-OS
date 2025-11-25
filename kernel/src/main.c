@@ -18,6 +18,14 @@
 //driver includes
 #include <drivers/ps2/keyboard.h>
 
+//mem includes
+#include <mem/vmm.h>
+#include <mem/pmm.h>
+#include <mem/kmalloc.h>
+#include <mem/umalloc.h>
+//fs includes
+#include <fs/ramfs.h>
+
 
 static volatile struct limine_framebuffer* framebuffer;
 static int fb_width, fb_height;
@@ -30,8 +38,16 @@ volatile struct limine_framebuffer_request framebuffer_request = {
     .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
     .revision = 0
 };
+__attribute__((used, section(".limine_requests")))
+volatile struct limine_memmap_request memmap_request = {
+    .id = LIMINE_MEMMAP_REQUEST_ID,
+    .revision = 0
+};
 
 
+void init_kernel_lib(void){
+    
+}
 
 void init_fb(void) {
     if (framebuffer_request.response == NULL ||
@@ -50,6 +66,43 @@ void init_fb(void) {
 
     kprint_ok("frambuffer init");
 }
+
+void init_ramfs_test(){
+    kprint_ok("initing ramfs");
+    ramfs_init();
+
+    kprint("=== ROOT TEST ===\n");
+
+
+    kprint("=== MKDIR /etc ===\n");
+    ramfs_mkdir("/etc");
+
+    kprint("=== LIST ROOT ===\n");
+    ramfs_list_dir("/");
+    
+    kprint("=== CREATE FILE ===\n");
+    ramfs_create_file("/etc/hosts", "127.0.0.1 localhost");
+
+    kprint("=== LIST /etc ===\n");
+    ramfs_list_dir("/etc");
+
+    kprint("=== READ FILE ===\n");
+    ramfs_read_file("/etc/hosts");
+    ramfs_delete_file("/etc/hosts");
+    ramfs_delete_file("/");
+
+
+    kprint("=== LIST /etc AFTER DELETE ===\n");
+    ramfs_list_dir("/");
+
+}
+void init_mem(void){
+    kprint_ok("initing mem ");
+    struct limine_memmap_response *memmap = memmap_request.response;
+    vmm_init(memmap);
+    kprint_ok("mem init completet ");
+}
+
 
 void init_interrupts(void) {
     interrupts_disable();
@@ -89,6 +142,8 @@ void init_kernel(void) {
     init_fb();
     init_interrupts();
     init_drivers();
+    init_mem();
+    init_ramfs_test();
     sleep_s(1);
     kprint_ok("Kernel initialized.");
 }
