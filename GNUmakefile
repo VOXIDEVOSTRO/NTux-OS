@@ -5,7 +5,7 @@
 ARCH := x86_64
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-QEMUFLAGS := -m 4G -M q35 -D qemu_debug.txt -no-shutdown -no-reboot -d int,cpu_reset,guest_errors,page
+QEMUFLAGS := -m 4G -M q35 #-D qemu_debug.txt -no-shutdown -no-reboot -d int,cpu_reset,guest_errors,page
 override IMAGE_NAME := NTux-OS-$(ARCH)
 
 # Toolchain for building the 'limine' executable for the host.

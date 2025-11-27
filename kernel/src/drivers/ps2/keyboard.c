@@ -1,69 +1,60 @@
 #include "keyboard.h"
 #include <kernel_lib/io.h>
+#include "ringbuffer.h"
+#include "scancode_table_de.h"
 
 
-// Initialization
-void ps2_init() {
-    // Disable both PS/2 ports
-    outb(PS2_COMMAND_PORT, PS2_COMMAND_DISABLE_PORT1);
-    outb(PS2_COMMAND_PORT, PS2_COMMAND_DISABLE_PORT2);
+ringbuffer_t kb_buffer;
+uint8_t shift_pressed = 0;
+uint8_t ctrl_pressed  = 0;
+uint8_t alt_pressed   = 0;
 
-    // Flush output buffer
-    while (inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_FULL)
-        inb(PS2_DATA_PORT);
+extern char scancode_ascii[128];
+extern char scancode_ascii_shift[128];
 
-    // Read controller configuration byte
-    outb(PS2_COMMAND_PORT, PS2_COMMAND_READ_CONFIG);
-    uint8_t config = inb(PS2_DATA_PORT);
-
-    // Enable PS/2 ports
-    config |= 1;    // Enable first port
-    config &= ~0x10; // Enable IRQ12 for first port
-    outb(PS2_COMMAND_PORT, PS2_COMMAND_WRITE_CONFIG);
-    outb(PS2_DATA_PORT, config);
-
-    outb(PS2_COMMAND_PORT, PS2_COMMAND_ENABLE_PORT1); // Enable first port
+void keyboard_init() {
+    rb_init(&kb_buffer);
 }
 
-// Read keyboard data
-uint8_t ps2_read_data() {
-    while (!(inb(PS2_STATUS_PORT) & PS2_STATUS_OUTPUT_FULL))
-        ; // Wait until output buffer is full
-    return inb(PS2_DATA_PORT);
+void keyboard_poll() {
+    uint8_t status = inb(0x64);  
+    if(!(status & 1)) return;    
+
+    uint8_t scancode = inb(0x60);
+
+    uint8_t released = scancode & 0x80;
+    uint8_t key = scancode & 0x7F;
+
+    if(key == 0x2A || key == 0x36) shift_pressed = !released; 
+    if(key == 0x1D) ctrl_pressed  = !released; 
+    if(key == 0x38) alt_pressed   = !released; 
+
+    if(!released) {
+        char c = shift_pressed ? scancode_ascii_shift[key] : scancode_ascii[key];
+        if(c) rb_put(&kb_buffer, c);
+    }
 }
 
-uint16_t sct1[] = {
-    0, 0x0100, 49, 50, // unprintable = escape
-    51, 52, 53, 54,
-    55, 56, 57, 48,
-    45, 61, 0x0200, 9,  // unprintable = backspace
-    113, 119, 101, 114,
-    116, 121, 117, 105,
-    111, 112, 91, 93,
-    0x0300, 0x0400, 97, 115, // unprintable = enter, control
-    100, 102, 103, 104,
-    106, 107, 108, 59,
-    39, 96, 0x0500, 92, // unprintable = shift
-    122, 120, 99, 118,
-    98, 110, 109, 44,
-    46, 47, 0x0500, 42, // unprintable = shift
-    0x0600, 32, 0x0700, 0x0800, // unprintable = alt, CapsLock, f1
-    0x0900, 0x0A00, 0x0B00, 0x0C00, // unprintable = f2, f3, f4, f5
-    0x0D00, 0x0E00, 0x0F00, 0x1000, // unprintable = f6, f7, f8, f9
-    0x1100, 0x1400, 0x1500, 55, // unprintable = f10, NumLock, ScrollLock  (rule broken here to make Function keys more logical)
-    56, 57, 45, 52,
-    53, 54, 43, 49,
-    50, 51, 48, 46,
-    0, 0, 0, 0x1200, // unprintable = f11
-    0x1300           // unprintable = f12
-};
+int keyboard_getchar(char* c) {
+    return rb_get(&kb_buffer, c);
+}
 
-uint16_t detect_special_key(uint8_t scancode) {
-    if (scancode >= sizeof(sct1)/sizeof(sct1[0])) return 0;
-    uint16_t key = sct1[scancode];
+int keyboard_is_key_pressed(uint8_t key) {
+    if (key == SCANCODE_LEFT_SHIFT || key == SCANCODE_RIGHT_SHIFT) {
+        return shift_pressed;
+    }
+    if (key == SCANCODE_CTRL) {
+        return ctrl_pressed;
+    }
+    if (key == SCANCODE_ALT) {
+        return alt_pressed;
+    }
+    
 
-    if (key & 0xFF00) {
-        return key;    }
+    char c = shift_pressed ? scancode_ascii_shift[key] : scancode_ascii[key];
+    return (c != 0);  
+}
 
-    return 0;
+void keyboard_irq_handler(void) {
+    keyboard_poll();       
 }

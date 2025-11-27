@@ -26,6 +26,9 @@
 //fs includes
 #include <fs/ramfs.h>
 
+//kernel lib includes
+#include <kernel_lib/string.h>
+
 
 static volatile struct limine_framebuffer* framebuffer;
 static int fb_width, fb_height;
@@ -106,10 +109,10 @@ void init_mem(void){
 
 void init_interrupts(void) {
     interrupts_disable();
-    pic_init();
-    kprint_ok("PIC init");
     gdt_init();
     kprint_ok("GDT init");
+    pic_init();
+    kprint_ok("PIC init");
     idt_init();
     kprint_ok("IDT init");
     init_timer();
@@ -134,7 +137,7 @@ void init_interrupts(void) {
 }
 
 void init_drivers(void) {
-    ps2_init();
+    keyboard_init();
     kprint_ok("PS/2 controller initialized");
 }
 
@@ -144,26 +147,139 @@ void init_kernel(void) {
     init_drivers();
     init_mem();
     init_ramfs_test();
-    for (int i = 0; i < 900; i++){    
-        sleep_s(1);
-        kprint_ok("1 second passed");
-    }
+    int second = 10;
+    kprint("Sleeping for 10 seconds...\n");
+    sleep_s(second);
     kprint_ok("Kernel initialized.");
 }
 
 
+/* test shell here*/
+#define SHELL_MAX_INPUT 128
+#define CURSOR_BLINK_LOOPS 8000000  
+
+static char input_buffer[SHELL_MAX_INPUT];  
+static int input_len = 0;  
+
+int cursor_visible = 1;  
+int blink_counter = 0;  
+
+// clear method
+static void shell_clear_screen() {
+    clear_screen_lim(framebuffer, COLOR_BLACK);  
+    shell_cursor->x = 0;  
+    shell_cursor->y = 0; 
+}
+
+static void shell_backspace() {
+    if (input_len > 0) {
+        input_len--;  
+        input_buffer[input_len] = '\0';  
+
+        if (cursor_visible) clear_cursor_lim(framebuffer, shell_cursor);  
+        if (shell_cursor->x >= shell_cursor->char_width) {
+            shell_cursor->x -= shell_cursor->char_width;  
+        } else if (shell_cursor->y > 0) {
+            shell_cursor->y -= shell_cursor->char_height;  
+            shell_cursor->x = fb_width - shell_cursor->char_width;  
+        }
+
+        draw_char_lim(framebuffer->address, fb_width, shell_cursor->x, shell_cursor->y, 0x000000);  
+
+        cursor_visible = 1;
+        render_cursor_lim(framebuffer, shell_cursor, color);  
+    }
+}
+
+static void shell_print_prompt() {
+    const char* prompt = "<NTux-OS> :";  
+    for (int i = 0; prompt[i]; i++)
+        put_char_with_cursor_lim(framebuffer, shell_cursor, prompt[i], color);  
+}
+
+static void shell_clear_input() {
+    input_len = 0;
+    input_buffer[0] = '\0';  
+}
+
+
+static void shell_execute_command(const char* cmd) {
+    if (strcmp(cmd, "help") == 0) {
+        kprint("Commands:\n  help     - show this help\n  clear    - clear screen\n  reboot   - reboot the system\n    version  - shows os version\n   echo     - prints what ever you want \n");
+    } else if (strcmp(cmd, "clear") == 0) {
+        shell_clear_screen();  
+    } else if (strcmp(cmd, "reboot") == 0) {
+        kprint("Rebooting in 3 seconds...\n");
+        sleep_s(1);  
+        kprint("Rebooting in 2 seconds...\n");
+        sleep_s(1);  
+        kprint("Rebooting in 1 second...\n");
+        sleep_s(1);  
+        outb(0x64, 0xFE);  
+        for (;;) __asm__ volatile("hlt");
+    }  else if (strcmp(cmd, "version") == 0) {
+        kprint("version 0.0.1 build 15\n");
+    } else if (strncmp(cmd, "echo ", 5) == 0) {
+        kprint(cmd + 5); 
+        kprint("\n");
+    }
+
+    else if (strlen(cmd) > 0) {
+        kprint("Unknown command: ");
+        kprint(cmd);  
+        kprint("\n");
+    }
+}
+
+static void shell_handle_key(char c) {
+    if (cursor_visible) clear_cursor_lim(framebuffer, shell_cursor);
+
+    if (c == '\n') {  
+        input_buffer[input_len] = '\0';  
+        kprint("\n");
+        shell_execute_command(input_buffer);
+        shell_clear_input();  
+        shell_print_prompt();  
+    } else if (c == '\b') {  
+        shell_backspace();  
+    } else if (c >= 32 && c < 127) {  
+        if (input_len < SHELL_MAX_INPUT - 1) {
+            input_buffer[input_len++] = c;  
+            put_char_with_cursor_lim(framebuffer, shell_cursor, c, color);  
+        }
+    }
+    cursor_visible = 1;
+    render_cursor_lim(framebuffer, shell_cursor, color);
+}
+
+static void update_cursor_blink() {
+    blink_counter++;
+    if (blink_counter >= CURSOR_BLINK_LOOPS) {
+        blink_counter = 0;
+        if (cursor_visible) {
+            clear_cursor_lim(framebuffer, shell_cursor);
+            cursor_visible = 0;
+        } else {
+            render_cursor_lim(framebuffer, shell_cursor, color);
+            cursor_visible = 1;
+        }
+    }
+}
+
+//kernel main function
 
 void kmain(void) {
-    init_kernel();
+    shell_clear_screen();
     kprint("Welcome to NTux-OS!\n");
+    shell_print_prompt();
+    update_cursor_blink();
     while (1) {
-        uint8_t sc = ps2_read_data();
-        uint16_t key = sct1[sc];
-        uint16_t special_key = detect_special_key(sc);
-        if (key < 0x0100) {
-            char c = (char)key;
-            kprintcolor(&c, COLOR_LIGHT_GREEN);
-        } 
+        keyboard_poll();  
+        char c;
+        if(keyboard_getchar(&c)){
+             shell_handle_key(c);
+        }
+        update_cursor_blink();  
         __asm__ volatile("hlt");
     }
 }
