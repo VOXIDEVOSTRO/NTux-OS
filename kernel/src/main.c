@@ -85,6 +85,7 @@ void init_ramfs_test(){
     
     kprint("=== CREATE FILE ===\n");
     ramfs_create_file("/etc/hosts", "127.0.0.1 localhost");
+    ramfs_create_file("/readme.txt", "This is a test file in RAMFS.");
 
     kprint("=== LIST /etc ===\n");
     ramfs_list_dir("/etc");
@@ -167,9 +168,19 @@ int blink_counter = 0;
 
 // clear method
 static void shell_clear_screen() {
-    clear_screen_lim(framebuffer, COLOR_BLACK);  
-    shell_cursor->x = 0;  
-    shell_cursor->y = 0; 
+    if (framebuffer_request.response == NULL ||
+        framebuffer_request.response->framebuffer_count < 1) {
+    }
+
+    framebuffer = framebuffer_request.response->framebuffers[0];
+    fb_width = (int)framebuffer->width;
+    fb_height = (int)framebuffer->height-3;
+
+    clear_screen_lim(framebuffer, COLOR_BLACK);
+
+    shell_cursor = &shell_cursor_struct;
+    init_cursor(shell_cursor, fb_width, fb_height);
+    init_kprint_global(framebuffer, shell_cursor, color);
 }
 
 static void shell_backspace() {
@@ -223,8 +234,33 @@ static void shell_execute_command(const char* cmd) {
     } else if (strncmp(cmd, "echo ", 5) == 0) {
         kprint(cmd + 5); 
         kprint("\n");
+    }else if (strncmp(cmd, "rmkdir ", 7) == 0) {        
+        const char* path = cmd + 7;                   
+        while (*path == ' ') path++;
+    
+        if (strlen(path) == 0) {
+            kprint("rmkdir: missing directory name\n");
+        } else {
+            int result = ramfs_mkdir(path);
+            kprint("Directory created: ");
+            kprint(path);
+            kprint("\n");
+        }
+    }else if (strcmp(cmd, "rls") == 0) {
+        ramfs_list_dir("/");
+    }else if (strncmp(cmd, "read ", 5) == 0) {
+    const char* path = cmd + 5;
+    while (*path == ' ' || *path == '\t') path++;  
+
+    if (*path == '\0') {
+        kprintcolor("read: missing file path!\n",COLOR_LIGHT_RED );
+        kprint("Usage: read /readme.txt\n");
+        return;
     }
 
+    const char * output=ramfs_read_file(path);
+    kprint(output);
+}
     else if (strlen(cmd) > 0) {
         kprint("Unknown command: ");
         kprint(cmd);  

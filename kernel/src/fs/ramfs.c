@@ -34,23 +34,23 @@ static char* next_token(char** str) {
 }
 
 static ramfs_node_t* ramfs_find_node(const char* path, int create_missing) {
-    kprint("[DEBUG] ramfs_find_node: '"); kprint(path); kprint("'\n");
+    //kprint("[DEBUG] ramfs_find_node: '"); kprint(path); kprint("'\n");
 
     if (!ramfs_root) {
         kprint("[DEBUG] ramfs_root is NULL!\n");
         return NULL;
     }
-    kprint("[DEBUG] ramfs_root OK\n");
+    //kprint("[DEBUG] ramfs_root OK\n");
 
     if (!path || path[0] == '\0' || (path[0] == '/' && path[1] == '\0')) {
-        kprint("[DEBUG] returning root\n");
+       // kprint("[DEBUG] returning root\n");
         return ramfs_root;
     }
 
     char temp[256];
     strncpy(temp, path, sizeof(temp) - 1);
     temp[sizeof(temp) - 1] = '\0';
-    kprint("[DEBUG] path copy: '"); kprint(temp); kprint("'\n");
+    //kprint("[DEBUG] path copy: '"); kprint(temp); kprint("'\n");
 
     ramfs_node_t* cur = ramfs_root;
     char* p = temp;
@@ -59,28 +59,27 @@ static ramfs_node_t* ramfs_find_node(const char* path, int create_missing) {
     while ((token = next_token(&p))) {
         if (token[0] == '\0') continue;
 
-        kprint("[DEBUG] token: '"); kprint(token); kprint("'\n");
+        //kprint("[DEBUG] token: '"); kprint(token); kprint("'\n");
 
         int found = 0;
         for (size_t i = 0; i < cur->child_count; i++) {
-            kprint("[DEBUG]   compare with child["); 
+            //kprint("[DEBUG]   compare with child["); 
             char buf[16]; itoa(i, buf, 10); kprint(buf); kprint("]: '");
             kprint(cur->children[i]->name); kprint("'\n");
 
             if (strcmp(cur->children[i]->name, token) == 0) {
                 cur = cur->children[i];
                 found = 1;
-                kprint("[DEBUG]   FOUND!\n");
+                //kprint("[DEBUG]   FOUND!\n");
                 break;
             }
         }
 
         if (!found) {
-            kprint("[DEBUG]   NOT FOUND\n");
+            //kprint("[DEBUG]   NOT FOUND\n");
             if (!create_missing) return NULL;
             ramfs_node_t* new_node = kmalloc(sizeof(ramfs_node_t));
             if (!new_node) {
-                kprint("[DEBUG] kmalloc failed for new node!\n");
                 return NULL;
             }
             memset(new_node, 0, sizeof(ramfs_node_t));
@@ -97,11 +96,9 @@ static ramfs_node_t* ramfs_find_node(const char* path, int create_missing) {
 
             cur->children[cur->child_count++] = new_node;
             cur = new_node;
-            kprint("[DEBUG]   CREATED new dir: '"); kprint(token); kprint("'\n");
         }
     }
 
-    kprint("[DEBUG] returning node\n");
     return cur;
 }
 
