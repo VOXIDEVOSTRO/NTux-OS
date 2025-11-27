@@ -281,7 +281,7 @@ void kmain(void) {
     shell_print_prompt();
     update_cursor_blink();
     while (1) {
-        //keyboard_poll();  
+        keyboard_poll();  
         char c;
         if(keyboard_getchar(&c)){
              shell_handle_key(c);
