@@ -59,7 +59,7 @@ void init_fb(void) {
 
     framebuffer = framebuffer_request.response->framebuffers[0];
     fb_width = (int)framebuffer->width;
-    fb_height = (int)framebuffer->height;
+    fb_height = (int)framebuffer->height-3;
 
     clear_screen_lim(framebuffer, COLOR_BLACK);
 
@@ -141,14 +141,15 @@ void init_drivers(void) {
     kprint_ok("PS/2 controller initialized");
 }
 
+
 void init_kernel(void) {
     init_fb();
     init_interrupts();
     init_drivers();
     init_mem();
     init_ramfs_test();
-    int second = 10;
-    kprint("Sleeping for 10 seconds...\n");
+    int second = 3;
+    kprint("Sleeping for 3 seconds...\n");
     sleep_s(second);
     kprint_ok("Kernel initialized.");
 }
@@ -156,7 +157,7 @@ void init_kernel(void) {
 
 /* test shell here*/
 #define SHELL_MAX_INPUT 128
-#define CURSOR_BLINK_LOOPS 8000000  
+#define CURSOR_BLINK_LOOPS 8000
 
 static char input_buffer[SHELL_MAX_INPUT];  
 static int input_len = 0;  
@@ -252,29 +253,35 @@ static void shell_handle_key(char c) {
     render_cursor_lim(framebuffer, shell_cursor, color);
 }
 
-static void update_cursor_blink() {
-    blink_counter++;
-    if (blink_counter >= CURSOR_BLINK_LOOPS) {
-        blink_counter = 0;
+int last_blink_tick = 0;
+
+static void update_cursor_blink(void) {
+    if (get_tick_count() - last_blink_tick >= 20) {
+        last_blink_tick = get_tick_count();
+
         if (cursor_visible) {
             clear_cursor_lim(framebuffer, shell_cursor);
-            cursor_visible = 0;
+            cursor_visible = false;
         } else {
             render_cursor_lim(framebuffer, shell_cursor, color);
-            cursor_visible = 1;
+            cursor_visible = true;
         }
+        last_blink_tick = get_tick_count();
     }
 }
+
 
 //kernel main function
 
 void kmain(void) {
+    last_blink_tick = get_tick_count();
+    init_kernel();
     shell_clear_screen();
     kprint("Welcome to NTux-OS!\n");
     shell_print_prompt();
     update_cursor_blink();
     while (1) {
-        keyboard_poll();  
+        //keyboard_poll();  
         char c;
         if(keyboard_getchar(&c)){
              shell_handle_key(c);

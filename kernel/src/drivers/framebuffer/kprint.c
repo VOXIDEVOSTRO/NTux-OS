@@ -142,7 +142,7 @@ void trigger_blue_screen(void){
     kprint("\n\n");
     kprint("A critical error has occurred. System halted.\ns");
     kprint_error("System will not continue.");
-    kprint("Please restart your computer.\n");
+
     for(;;){
         __asm__ volatile("hlt");
     }

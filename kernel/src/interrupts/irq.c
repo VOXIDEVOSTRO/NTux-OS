@@ -19,7 +19,7 @@ void irq_handler_c(uint64_t *stack) {
         irq_handlers[irq]();
     } else {
         kprint_error("Unhandled IRQ: ");
-        kprint_hex(irq);
+        kprint(irq);
     }
 
     pic_send_eoi(irq);

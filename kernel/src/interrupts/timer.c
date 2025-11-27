@@ -33,3 +33,7 @@ void sleep_m(uint32_t minutes) {
     uint32_t ticks_per_minute = 60 * 100;  
     sleep(minutes * ticks_per_minute);
 }
+
+int get_tick_count() {
+    return (int)tick_count;
+}
