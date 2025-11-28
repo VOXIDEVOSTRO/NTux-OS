@@ -42,12 +42,8 @@ void play_startup_sound(void)
     beep(659, 180);   // E5
     beep(784, 220);   // G5
 
-    beep(1047, 180);  // C6 (glänzt wie XP)
-    beep(988, 160);   // B5
-    beep(1175, 260);  // D6
-
-    beep(1568, 340);  // G6 - warmes Ende
-
+    beep(1047, 18);  // C6 (glänzt wie XP)
+    beep(988, 100);   // B5
     beep(0, 100);
 }
 
@@ -58,8 +54,7 @@ void play_shutdown_sound(void)
     beep(1047, 260);  // C6
     beep( 880, 320);  // A5
     beep( 698, 420);  // F5
-    beep( 587, 500);  // D5
-    beep( 440, 700);  // A4 - trauriges Ende
+
 
     beep(0, 200);
     kprint("Goodbye...\n");
