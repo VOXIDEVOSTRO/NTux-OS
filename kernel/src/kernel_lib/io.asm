@@ -9,6 +9,8 @@ global inb         ; Declare inb function (input byte)
 global outb        ; Declare outb function (output byte)
 global inw         ; Declare inw function (input word)
 global outw        ; Declare outw function (output word)
+global inl         ; Declare inl function
+global outl        ; Decleare outl function
 
 section .text
 
@@ -45,3 +47,15 @@ outw:
     mov ax, si            ; Move value from rsi (2nd argument) into ax (16-bit value)
     out dx, ax            ; Write word in ax to the port at dx
     ret                   ; Return
+; uint32_t inl(uint16_t port)   ← 32-Bit reading
+inl:
+    mov dx, di          
+    in  eax, dx         
+    ret
+
+; void outl(uint16_t port, uint32_t value)   ← 32-Bit writing
+outl:
+    mov dx, di          
+    mov eax, esi       
+    out dx, eax         
+    ret

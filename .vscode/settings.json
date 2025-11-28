@@ -8,6 +8,10 @@
         "keyboard.h": "c",
         "info.h": "c",
         "timer.h": "c",
-        "pmm.h": "c"
+        "pmm.h": "c",
+        "usb_keyboard.h": "c",
+        "usb_hid.h": "c",
+        "io.h": "c",
+        "pci.h": "c"
     }
 }

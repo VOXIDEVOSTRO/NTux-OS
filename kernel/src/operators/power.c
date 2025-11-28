@@ -1,4 +1,5 @@
 #include <operators/power.h>
+#include <drivers/audio/audio.h>
 #include <stdint.h>
 
 static inline void outl(uint16_t port, uint32_t val) { asm volatile ("outl %0, %1" : : "a"(val),  "Nd"(port)); }
@@ -9,6 +10,7 @@ static uint16_t acpi_slp_typb = 0;
 
 void power_reboot(void)
 {
+    play_shutdown_sound();
     uint8_t status;
     do {
         status = inb(0x64);
@@ -25,6 +27,7 @@ extern void (*limine_shutdown_callback)(void);
 void power_shutdown(void)
 {
     kprint("powering off\n");
+    play_shutdown_sound();
     if (limine_shutdown_callback)
     {
         limine_shutdown_callback();

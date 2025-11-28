@@ -1,6 +1,36 @@
 #include "kprint.h"
+#include <stdarg.h>
 
 kprint_t g_printer;
+
+static void reverse(char* str, int len) {
+    int i = 0, j = len - 1;
+    while (i < j) {
+        char t = str[i]; str[i++] = str[j]; str[j--] = t;
+    }
+}
+
+static int itoa_unsigned(uint64_t num, char* str, int base) {
+    int i = 0;
+    if (num == 0) { str[i++] = '0'; str[i] = '\0'; return i; }
+    while (num != 0) {
+        int rem = num % base;
+        str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
+        num /= base;
+    }
+    str[i] = '\0';
+    reverse(str, i);
+    return i;
+}
+
+static int itoa_signed(int64_t num, char* str) {
+    int i = 0;
+    if (num == 0) { str[i++] = '0'; str[i] = '\0'; return i; }
+    if (num < 0) { str[i++] = '-'; num = -num; }
+    i += itoa_unsigned((uint64_t)num, str + i, 10);
+    str[i] = '\0';
+    return i;
+}
 
 void itoa(int num, char* str, int base) {
     int i = 0;
@@ -145,4 +175,79 @@ void trigger_blue_screen(void){
     kprint("the system will reboot in 5 seconds...\n");
     sleep_s(5);
     power_reboot();
+}
+
+
+void kprintf(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    char buffer[64];
+
+    while (*format) {
+        if (*format != '%') {
+            char tmp[2] = {*format++, '\0'};
+            kprint(tmp);
+            continue;
+        }
+
+        format++;  // überspringt das %
+
+        switch (*format) {
+            case 'd':
+            case 'i': {
+                int val = va_arg(args, int);
+                itoa_signed(val, buffer);
+                kprint(buffer);
+                break;
+            }
+            case 'u': {
+                unsigned int val = va_arg(args, unsigned int);
+                itoa_unsigned(val, buffer, 10);
+                kprint(buffer);
+                break;
+            }
+            case 'x':
+            case 'X': {
+                unsigned int val = va_arg(args, unsigned int);
+                kprint("0x");
+                itoa_unsigned(val, buffer, 16);
+                kprint(buffer);
+                break;
+            }
+            case 'p': {
+                void* ptr = va_arg(args, void*);
+                kprint("0x");
+                itoa_unsigned((uint64_t)(uintptr_t)ptr, buffer, 16);
+                kprint(buffer);
+                break;
+            }
+            case 's': {
+                char* str = va_arg(args, char*);
+                kprint(str ? str : "(null)");
+                break;
+            }
+            case 'c': {
+                char c = (char)va_arg(args, int);
+                char tmp[2] = {c, '\0'};
+                kprint(tmp);
+                break;
+            }
+            case '%':
+                kprint("%");
+                break;
+            case '\0':
+                goto end;  
+            default: {
+                kprint("%");
+                char tmp[2] = {*format, '\0'};
+                kprint(tmp);
+                break;
+            }
+        }
+        format++;
+    }
+
+end:
+    va_end(args);
 }

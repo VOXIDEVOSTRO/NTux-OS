@@ -1,11 +1,9 @@
+//basic limine includes
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <limine.h>
 
-// kernel includes
-#include <drivers/framebuffer/fb.h>
-#include <drivers/framebuffer/kprint.h>
 
 //interrupts includes
 #include <interrupts/gdt.h>
@@ -17,20 +15,29 @@
 
 //driver includes
 #include <drivers/ps2/keyboard.h>
+#include <drivers/pci/pci.h>
+#include <drivers/framebuffer/fb.h>
+#include <drivers/framebuffer/kprint.h>
+#include <drivers/audio/audio.h>
 
 //mem includes
 #include <mem/vmm.h>
 #include <mem/pmm.h>
 #include <mem/kmalloc.h>
 #include <mem/umalloc.h>
+
+
 //fs includes
 #include <fs/ramfs.h>
 
 //kernel lib includes
 #include <kernel_lib/string.h>
 #include <kernel_lib/info.h>
+#include <kernel_lib/bool.h>
+
 //test
 #include <operators/power.h>
+
 
 
 static volatile struct limine_framebuffer* framebuffer;
@@ -116,7 +123,7 @@ void init_ramfs_test(){
     
     kprint("=== CREATE FILE ===\n");
     ramfs_create_file("/etc/hosts", "127.0.0.1 localhost");
-    ramfs_create_file("/readme.txt", "This is a test file in RAMFS.");
+    ramfs_create_file("readme.txt", "This is a test file in RAMFS.");
 
     kprint("=== LIST /etc ===\n");
     ramfs_list_dir("/etc");
@@ -171,6 +178,10 @@ void init_interrupts(void) {
 void init_drivers(void) {
     keyboard_init();
     kprint_ok("PS/2 controller initialized");
+    pci_init();
+    kprint_ok("PCI bus initialized");
+    beep(440, 5);
+    kprint_ok("Audio initzialized");
 }
 
 
@@ -180,10 +191,17 @@ void init_kernel(void) {
     init_drivers();
     init_mem();
     init_ramfs_test();
+    boolean running = true;
+    kprint_ok(boolean_to_string(running));
+    kprint("\n");
+    running = false;
+    kprint_ok(boolean_to_string(running));
+    kprint("\n");
     int second = 3;
     kprint("Sleeping for 3 seconds...\n");
     sleep_s(second);
     kprint_ok("Kernel initialized.");
+    play_startup_sound();
 }
 
 
@@ -259,6 +277,8 @@ static void shell_execute_command(const char* cmd) {
         kprint("Rebooting in 1 second...\n");
         sleep_s(1);  
         power_reboot();
+    }else if (strcmp(cmd, "Hello World!") == 0){
+        kprint("Bro why did you type this ??????\n");
     }else if (strcmp(cmd, "shutdown") == 0) {
         kprint("Powering off in 3 seconds...\n");
         sleep_s(1);  
