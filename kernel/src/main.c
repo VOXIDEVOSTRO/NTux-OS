@@ -279,6 +279,8 @@ static void shell_execute_command(const char* cmd) {
         power_reboot();
     }else if (strcmp(cmd, "Hello World!") == 0){
         kprint("Bro why did you type this ??????\n");
+    }else if (strcmp(cmd, "test") == 0){
+        play_slainewin_easteregg();
     }else if (strcmp(cmd, "shutdown") == 0) {
         kprint("Powering off in 3 seconds...\n");
         sleep_s(1);  

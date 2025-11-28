@@ -38,28 +38,51 @@ void beep(uint32_t freq_hz, uint32_t duration_ms)
 
 void play_startup_sound(void)
 {
-    beep( 523, 140);   // C5
-    beep( 659, 140);   // E5
-    beep( 880, 140);   // A5
-    beep(1047, 140);   // C6
-    beep(1318, 140);   // E6
-    beep(1760, 140);   // A6
+    beep(523, 180);   // C5
+    beep(659, 180);   // E5
+    beep(784, 220);   // G5
 
-    beep(2093, 180);   // C7
-    beep(2349, 180);   // D7
-    beep(2794, 700);   // F7 
+    beep(1047, 180);  // C6 (glänzt wie XP)
+    beep(988, 160);   // B5
+    beep(1175, 260);  // D6
+
+    beep(1568, 340);  // G6 - warmes Ende
 
     beep(0, 100);
 }
 
 void play_shutdown_sound(void)
 {
-    beep(1760, 200);   // A6
-    beep(1480, 200);   // F6
-    beep(1175, 250);   // D6
-    beep( 988, 300);   // B5
-    beep( 784, 300);   // G5
-    beep( 659, 400);   // E5
-    beep( 523, 900);   // C5
-    kprint("Goodbye!\n");
+    beep(1318, 200);  // E6
+    beep(1175, 220);  // D6
+    beep(1047, 260);  // C6
+    beep( 880, 320);  // A5
+    beep( 698, 420);  // F5
+    beep( 587, 500);  // D5
+    beep( 440, 700);  // A4 - trauriges Ende
+
+    beep(0, 200);
+    kprint("Goodbye...\n");
+}
+void play_slainewin_easteregg(void)
+{
+    for (uint64_t t = 0; t < 8000 * 60; t++) {  
+        uint32_t v = t * ((t / 2 >> 10 | t % 16 * t >> 8) & 8 * t >> 12 & 18) | -(t / 16) + 64;
+        uint32_t freq = (v & 0xFF) + 150;  
+        if (freq > 150) {
+            uint32_t div = 1193180 / freq;  
+            outb(0x43, 0xB6);  
+            outb(0x42, (uint8_t)div);  
+            outb(0x42, div >> 8);  
+            outb(0x61, inb(0x61) | 3);  
+        }
+        for (volatile int d = 0; d < 125; d++) asm volatile ("nop");  
+        if ((t % 8000) == 7999) {
+            outb(0x61, inb(0x61) & 0xFC);  
+            for (volatile int d = 0; d < 3000; d++) asm("nop");  
+        }
+    }
+
+    outb(0x61, inb(0x61) & 0xFC);
+    kprint("SlaineWin Bytebeat sound completed\n");
 }
