@@ -67,22 +67,22 @@ void play_shutdown_sound(void)
 void play_slainewin_easteregg(void)
 {
     for (uint64_t t = 0; t < 8000 * 60; t++) {  
-        uint32_t v = t * ((t / 2 >> 10 | t % 16 * t >> 8) & 8 * t >> 12 & 18) | -(t / 16) + 64;
+        uint32_t v = (t * ((t / 2 >> 10 | t % 16 * t >> 8) & 8 * t >> 12 & 18)) | (-(t / 16) + 64);
         uint32_t freq = (v & 0xFF) + 150;  
         if (freq > 150) {
             uint32_t div = 1193180 / freq;  
-            outb(0x43, 0xB6);  
+            outb(0x43, 0xB6); 
             outb(0x42, (uint8_t)div);  
             outb(0x42, div >> 8);  
-            outb(0x61, inb(0x61) | 3);  
+            outb(0x61, inb(0x61) | 3); 
         }
+
         for (volatile int d = 0; d < 125; d++) asm volatile ("nop");  
         if ((t % 8000) == 7999) {
             outb(0x61, inb(0x61) & 0xFC);  
             for (volatile int d = 0; d < 3000; d++) asm("nop");  
         }
     }
-
     outb(0x61, inb(0x61) & 0xFC);
     kprint("SlaineWin Bytebeat sound completed\n");
 }
