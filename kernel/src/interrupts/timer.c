@@ -4,7 +4,7 @@
 #include "timer.h"
 
 
-static uint64_t tick_count = 0;
+static volatile uint64_t tick_count = 0;
 
 void timer_handler(void) {
     tick_count++;
@@ -34,6 +34,6 @@ void sleep_m(uint32_t minutes) {
     sleep(minutes * ticks_per_minute);
 }
 
-int get_tick_count() {
-    return (int)tick_count;
+uint64_t get_tick_count() {
+    return tick_count;
 }

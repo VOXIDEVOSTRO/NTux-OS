@@ -28,13 +28,34 @@
 
 //kernel lib includes
 #include <kernel_lib/string.h>
+#include <kernel_lib/info.h>
+//test
+#include <operators/power.h>
 
 
 static volatile struct limine_framebuffer* framebuffer;
+static struct limine_memmap_response *memmap ;
 static int fb_width, fb_height;
 static cursor_t shell_cursor_struct;
 cursor_t* shell_cursor;
 uint32_t color = COLOR_WHITE;
+
+struct limine_shutdown_request {
+    uint64_t id[4];
+    uint64_t revision;
+    struct limine_shutdown_response *response;
+    void (*callback)(void);
+};
+
+struct limine_shutdown_response {
+    uint64_t revision;
+};
+
+
+#ifndef LIMINE_SHUTDOWN_REQUEST
+#define LIMINE_SHUTDOWN_REQUEST 0x8c6c3b258c6c3b25ULL, 0x8c6c3b258c6c3b25ULL, \
+                                0x8c6c3b258c6c3b25ULL, 0x8c6c3b258c6c3b25ULL
+#endif
 
 __attribute__((used, section(".limine_requests")))
 volatile struct limine_framebuffer_request framebuffer_request = {
@@ -47,6 +68,16 @@ volatile struct limine_memmap_request memmap_request = {
     .revision = 0
 };
 
+
+
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_shutdown_request shutdown_request = {
+    .id = { LIMINE_SHUTDOWN_REQUEST },
+    .revision = 0
+};
+
+void (*limine_shutdown_callback)(void) = NULL;
 
 void init_kernel_lib(void){
     
@@ -102,7 +133,7 @@ void init_ramfs_test(){
 }
 void init_mem(void){
     kprint_ok("initing mem ");
-    struct limine_memmap_response *memmap = memmap_request.response;
+    memmap= memmap_request.response;
     vmm_init(memmap);
     kprint_ok("mem init completet ");
 }
@@ -227,8 +258,23 @@ static void shell_execute_command(const char* cmd) {
         sleep_s(1);  
         kprint("Rebooting in 1 second...\n");
         sleep_s(1);  
-        outb(0x64, 0xFE);  
-        for (;;) __asm__ volatile("hlt");
+        power_reboot();
+    }else if (strcmp(cmd, "shutdown") == 0) {
+        kprint("Powering off in 3 seconds...\n");
+        sleep_s(1);  
+        kprint("Powering off in 2 seconds...\n");
+        sleep_s(1);  
+        kprint("Powering off in 1 second...\n");
+        sleep_s(1);  
+        power_shutdown();
+    }else if (strcmp(cmd, "cpuinfo") == 0) {
+        info_cmd_cpuinfo();
+    }
+    else if (strcmp(cmd, "meminfo") == 0) {
+        info_cmd_meminfo();
+    }
+    else if (strcmp(cmd, "uptime") == 0) {
+        info_cmd_uptime();
     }  else if (strcmp(cmd, "version") == 0) {
         kprint("version 0.0.1 build 15\n");
     } else if (strncmp(cmd, "echo ", 5) == 0) {

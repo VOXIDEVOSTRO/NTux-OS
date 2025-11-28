@@ -3,6 +3,11 @@
         "stdint.h": "c",
         "kprint.h": "c",
         "idt.h": "c",
-        "string.h": "c"
+        "string.h": "c",
+        "umalloc.h": "c",
+        "keyboard.h": "c",
+        "info.h": "c",
+        "timer.h": "c",
+        "pmm.h": "c"
     }
 }
