@@ -1,4 +1,6 @@
 obj-x86_64/src/main.c.o: src/main.c limine-protocol/include/limine.h \
+ src/kernel_res/images/background.h src/kernel_res/images/background2.h \
+ src/kernel_res/images/background3.h src/kernel_res/images/background4.h \
  src/interrupts/gdt.h src/interrupts/idt.h src/interrupts/pic.h \
  src/interrupts/interrupts.h src/interrupts/irq.h src/interrupts/timer.h \
  src/drivers/ps2/keyboard.h src/drivers/pci/pci.h \
@@ -9,6 +11,10 @@ obj-x86_64/src/main.c.o: src/main.c limine-protocol/include/limine.h \
  src/kernel_lib/string.h src/kernel_lib/info.h src/kernel_lib/bool.h \
  src/operators/power.h
 limine-protocol/include/limine.h:
+src/kernel_res/images/background.h:
+src/kernel_res/images/background2.h:
+src/kernel_res/images/background3.h:
+src/kernel_res/images/background4.h:
 src/interrupts/gdt.h:
 src/interrupts/idt.h:
 src/interrupts/pic.h:

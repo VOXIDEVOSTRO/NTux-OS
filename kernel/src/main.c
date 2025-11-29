@@ -6,6 +6,10 @@
 
 //res
 #include <kernel_res/images/background.h>
+#include <kernel_res/images/background2.h>
+#include <kernel_res/images/background3.h>
+#include <kernel_res/images/background4.h>
+
 
 
 //interrupts includes
@@ -42,6 +46,9 @@
 #include <operators/power.h>
 
 
+static int BACKGROUND_WT;
+static int BACKGROUND_HT;
+static uint64_t background_shell;
 
 static volatile struct limine_framebuffer* framebuffer;
 static struct limine_memmap_response *memmap ;
@@ -101,6 +108,10 @@ void init_fb(void) {
     framebuffer = framebuffer_request.response->framebuffers[0];
     fb_width = (int)framebuffer->width;
     fb_height = (int)framebuffer->height-3;
+    BACKGROUND_HT = BACKGROUND_HEIGHT;
+    BACKGROUND_WT = BACKGROUND_WIDTH;
+    background_shell = background;
+
 
     clear_screen_lim(framebuffer, COLOR_BLACK);
 
@@ -233,6 +244,7 @@ static void shell_clear_screen() {
     shell_cursor = &shell_cursor_struct;
     init_cursor(shell_cursor, fb_width, fb_height);
     init_kprint_global(framebuffer, shell_cursor, color);
+    draw_image_from_uint64_t(framebuffer,background_shell,BACKGROUND_WT,BACKGROUND_HT);
 }
 
 static void shell_backspace() {
@@ -284,6 +296,30 @@ static void shell_execute_command(const char* cmd) {
         kprint("Bro why did you type this ??????\n");
     }else if (strcmp(cmd, "test") == 0){
         play_slainewin_easteregg();
+    }else if (strcmp(cmd, "setbg1") == 0){
+        BACKGROUND_WT = BACKGROUND_WIDTH;
+        BACKGROUND_HT = BACKGROUND_HEIGHT;
+        background_shell  = background;
+        shell_clear_screen();
+        kprint("seted background 1\n");
+    }else if (strcmp(cmd, "setbg2") == 0){
+        BACKGROUND_WT = BACKGROUND2_WIDTH;
+        BACKGROUND_HT = BACKGROUND2_HEIGHT;
+        background_shell  = background2;
+        shell_clear_screen();
+        kprint("seted background 2\n");
+    }else if (strcmp(cmd, "setbg3") == 0){
+        BACKGROUND_WT = BACKGROUND3_WIDTH;
+        BACKGROUND_HT = BACKGROUND3_HEIGHT;
+        background_shell  = background3;
+        shell_clear_screen();
+        kprint("seted background 3\n");
+    }else if (strcmp(cmd, "setbg4") == 0){
+        BACKGROUND_WT = BACKGROUND4_WIDTH;
+        BACKGROUND_HT = BACKGROUND4_HEIGHT;
+        background_shell  = background4;
+        shell_clear_screen();
+        kprint("seted background 4\n");
     }else if (strcmp(cmd, "shutdown") == 0) {
         kprint("Powering off in 3 seconds...\n");
         sleep_s(1);  
@@ -348,6 +384,7 @@ static void shell_handle_key(char c) {
         shell_execute_command(input_buffer);
         shell_clear_input();  
         shell_print_prompt();  
+      
     } else if (c == '\b') {  
         shell_backspace();  
     } else if (c >= 32 && c < 127) {  
@@ -384,7 +421,6 @@ void kmain(void) {
     last_blink_tick = get_tick_count();
     init_kernel();
     shell_clear_screen();
-    draw_image_from_uint64_t(framebuffer,background,BACKGROUND_WIDTH,BACKGROUND_HEIGHT);
     kprint("Welcome to NTux-OS!\n");
     shell_print_prompt();
     update_cursor_blink();

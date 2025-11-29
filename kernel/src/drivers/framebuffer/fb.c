@@ -87,22 +87,17 @@ void draw_image_from_uint64_t(volatile struct limine_framebuffer* fb, uint64_t* 
     int fb_width = fb->width;
     int fb_height = fb->height;
 
-    // Scaling factors
-    double scale_x = (double)fb_width / img_width;
-    double scale_y = (double)fb_height / img_height;
-
-    // Going through every pixel
+    // Going through every pixel in the framebuffer
     for (int y = 0; y < fb_height; y++) {
         for (int x = 0; x < fb_width; x++) {
-            // Calculate the corresponding source coordinates in the original image
-            int src_x = (int)(x / scale_x);  // Cast to int to use as array index
-            int src_y = (int)(y / scale_y);  // Cast to int to use as array index
+            // Make sure we don't go beyond the bounds of the original image
+            if (x < img_width && y < img_height) {
+                // Get the color from the background array
+                uint64_t color = background[y * img_width + x];
 
-            // Get the color from the background array
-            uint64_t color = background[src_y * img_width + src_x];
-
-            // Draw the pixel to the framebuffer
-            put_pixel_lim(fb, x, y, color);
+                // Draw the pixel to the framebuffer
+                put_pixel_lim(fb, x, y, color);
+            }
         }
     }
 }
