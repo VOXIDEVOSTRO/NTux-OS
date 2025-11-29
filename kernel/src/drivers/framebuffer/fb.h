@@ -15,5 +15,6 @@ int letter_index(char c);
 void draw_scaled_char_lim(volatile struct limine_framebuffer* fb, int x, int y, const char* char_lines[5], uint32_t color, int scale);
 void draw_square_lim(volatile struct limine_framebuffer* fb, int x, int y, int size, uint32_t color);
 void draw_scaled_text_lim(volatile struct limine_framebuffer* fb, int x, int y, const char* str, uint32_t color, int scale);
+void draw_image_from_uint64_t(volatile struct limine_framebuffer* fb,uint64_t* background, int img_width,int img_height);
 
 #endif

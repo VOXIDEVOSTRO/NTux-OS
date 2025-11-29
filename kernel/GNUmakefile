@@ -49,7 +49,7 @@ ifeq ($(TOOLCHAIN),llvm)
 endif
 
 # User controllable C flags.
-CFLAGS := -g -O2 -pipe
+CFLAGS := -g -O2 -pipe -mno-sse
 
 # User controllable C preprocessor flags. We set none by default.
 CPPFLAGS :=
@@ -84,7 +84,8 @@ override CFLAGS += \
     -fno-lto \
     -fno-PIC \
     -ffunction-sections \
-    -fdata-sections
+    -fdata-sections \
+    -mno-sse
 
 # Internal C preprocessor flags that should not be changed by the user.
 override CPPFLAGS := \

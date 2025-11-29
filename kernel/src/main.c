@@ -4,6 +4,9 @@
 #include <stdbool.h>
 #include <limine.h>
 
+//res
+#include <kernel_res/images/background.h>
+
 
 //interrupts includes
 #include <interrupts/gdt.h>
@@ -381,6 +384,7 @@ void kmain(void) {
     last_blink_tick = get_tick_count();
     init_kernel();
     shell_clear_screen();
+    draw_image_from_uint64_t(framebuffer,background,BACKGROUND_WIDTH,BACKGROUND_HEIGHT);
     kprint("Welcome to NTux-OS!\n");
     shell_print_prompt();
     update_cursor_blink();
