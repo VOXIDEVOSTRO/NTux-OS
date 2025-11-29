@@ -1,22 +1,21 @@
 # Nuke built-in rules.
 .SUFFIXES:
 
-# This is the name that our final executable will have.
-# Change as needed.
+# Final executable name
 override OUTPUT := kernel
 
-# Target architecture to build for. Default to x86_64.
-ARCH := x86_64
+# Default architecture
+ARCH ?= x86_64
 
-# Install prefix; /usr/local is a good, standard default pick.
+# Install prefix
 PREFIX := /usr/local
 
-# Check if the architecture is supported.
+# Check supported architectures
 ifeq ($(filter $(ARCH),aarch64 loongarch64 riscv64 x86_64),)
     $(error Architecture $(ARCH) not supported)
 endif
 
-# User controllable toolchain and toolchain prefix.
+# Toolchain selection
 TOOLCHAIN :=
 TOOLCHAIN_PREFIX :=
 ifneq ($(TOOLCHAIN),)
@@ -25,57 +24,49 @@ ifneq ($(TOOLCHAIN),)
     endif
 endif
 
-# User controllable C compiler command.
 ifneq ($(TOOLCHAIN_PREFIX),)
-    CC := $(TOOLCHAIN_PREFIX)gcc
+    CC  := $(TOOLCHAIN_PREFIX)gcc
+    LD  := $(TOOLCHAIN_PREFIX)ld
+    ASM := $(TOOLCHAIN_PREFIX)as
 else
-    CC := cc
+    CC  := cc
+    LD  := ld
+    ASM := as
 endif
 
-# User controllable Assembler (for *.S files).
-ASM := $(TOOLCHAIN_PREFIX)as
-
-# User controllable NASM assembler command (for *.asm files).
 NASM := nasm
 
-# User controllable linker command.
-LD := $(TOOLCHAIN_PREFIX)ld
-
-# Defaults overrides for variables if using "llvm" as toolchain.
+# LLVM overrides
 ifeq ($(TOOLCHAIN),llvm)
-    CC := clang
-    LD := ld.lld
+    CC  := clang
+    LD  := ld.lld
     ASM := clang -c
 endif
 
-# User controllable C flags.
-CFLAGS := -g -O2 -pipe -mno-sse
-
-# User controllable C preprocessor flags. We set none by default.
-CPPFLAGS :=
-
+# ------------------------------------------------------------------
+# User-controllable flags
+# ------------------------------------------------------------------
+CFLAGS    := -g -O2 -pipe -mno-sse
+CPPFLAGS  :=
+LDFLAGS   :=
 ifeq ($(ARCH),x86_64)
-    # User controllable nasm flags.
-    NASMFLAGS := -g
+NASMFLAGS := -g
 endif
 
-# User controllable linker flags. We set none by default.
-LDFLAGS :=
-
-# Ensure the dependencies have been obtained.
+# ------------------------------------------------------------------
+# Dependency check
+# ------------------------------------------------------------------
 ifneq ($(filter-out clean distclean,$(MAKECMDGOALS)),)
     ifeq ($(wildcard .deps-obtained),)
         $(error Please run the ./get-deps script first)
     endif
 endif
 
-# Check if CC is Clang.
-override CC_IS_CLANG := $(shell ! $(CC) --version 2>/dev/null | grep -q '^Target: '; echo $$?)
-
-# Internal C flags that should not be changed by the user.
+# ------------------------------------------------------------------
+# Internal compiler flags (do NOT change unless you know exactly why)
+# ------------------------------------------------------------------
 override CFLAGS += \
-    -Wall \
-    -Wextra \
+    -Wall -Wextra \
     -std=gnu11 \
     -nostdinc \
     -ffreestanding \
@@ -83,88 +74,38 @@ override CFLAGS += \
     -fno-stack-check \
     -fno-lto \
     -fno-PIC \
+    -fno-PIE \
     -ffunction-sections \
     -fdata-sections \
     -mno-sse
 
-# Internal C preprocessor flags that should not be changed by the user.
 override CPPFLAGS := \
     -I src \
+    -I ../\
     -I limine-protocol/include \
     -isystem freestnd-c-hdrs/include \
+    -iquote ../libc \
     $(CPPFLAGS) \
-    -MMD \
-    -MP
+    -MMD -MP
 
+# Detect clang for target triple
+CC_IS_CLANG := $(shell $(CC) --version 2>/dev/null | grep -q clang && echo 1 || echo 0)
+ifeq ($(CC_IS_CLANG),1)
+    override CC += -target $(ARCH)-unknown-none-elf
+endif
+
+# Architecture-specific flags
 ifeq ($(ARCH),x86_64)
-    # Internal nasm flags that should not be changed by the user.
-    override NASMFLAGS := \
-        $(patsubst -g,-g -F dwarf,$(NASMFLAGS)) \
-        -Wall
+    override CFLAGS += -m64 -march=x86-64 -mabi=sysv -mno-80387 -mno-mmx -mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel
+    override LDFLAGS += -m elf_x86_64
+    override NASMFLAGS += -f elf64 -Wall
+    ifeq ($(findstring -g,$(NASMFLAGS)),)
+        override NASMFLAGS += -g -F dwarf
+    endif
 endif
 
-# Architecture specific internal flags.
-ifeq ($(ARCH),x86_64)
-    ifeq ($(CC_IS_CLANG),1)
-        override CC += \
-            -target x86_64-unknown-none-elf
-    endif
-    override CFLAGS += \
-        -m64 \
-        -march=x86-64 \
-        -mabi=sysv \
-        -mno-80387 \
-        -mno-mmx \
-        -mno-sse \
-        -mno-sse2 \
-        -mno-red-zone \
-        -mcmodel=kernel
-    override LDFLAGS += \
-        -m elf_x86_64
-    override NASMFLAGS := \
-        -f elf64 \
-        $(NASMFLAGS)
-endif
-ifeq ($(ARCH),aarch64)
-    ifeq ($(CC_IS_CLANG),1)
-        override CC += \
-            -target aarch64-unknown-none-elf
-    endif
-    override CFLAGS += \
-        -mcpu=generic \
-        -march=armv8-a+nofp+nosimd \
-        -mgeneral-regs-only
-    override LDFLAGS += \
-        -m aarch64elf
-endif
-ifeq ($(ARCH),riscv64)
-    ifeq ($(CC_IS_CLANG),1)
-        override CC += \
-            -target riscv64-unknown-none-elf
-    endif
-    override CFLAGS += \
-        -march=rv64imac_zicsr_zifencei \
-        -mabi=lp64 \
-        -mno-relax
-    override LDFLAGS += \
-        -m elf64lriscv \
-        --no-relax
-endif
-ifeq ($(ARCH),loongarch64)
-    ifeq ($(CC_IS_CLANG),1)
-        override CC += \
-            -target loongarch64-unknown-none-elf
-    endif
-    override CFLAGS += \
-        -march=loongarch64 \
-        -mabi=lp64s \
-        -mfpu=none \
-        -msimd=none
-    override LDFLAGS += \
-        -m elf64loongarch
-endif
+# (die anderen Archs kannst du bei Bedarf wieder einfügen)
 
-# Internal linker flags that should not be changed by the user.
 override LDFLAGS += \
     -nostdlib \
     -static \
@@ -172,74 +113,84 @@ override LDFLAGS += \
     --gc-sections \
     -T linker-scripts/$(ARCH).lds
 
-# Use "find" to glob all *.c, *.S, and *.asm files in the tree
-# (except the src/arch/* directories, as those are gonna be added
-# in the next step).
-override SRCFILES := $(shell find -L src cc-runtime/src -type f -not -path 'src/arch/*' 2>/dev/null | LC_ALL=C sort)
-# Add architecture specific files, if they exist.
-override SRCFILES += $(shell find -L src/arch/$(ARCH) -type f 2>/dev/null | LC_ALL=C sort)
-# Obtain the object and header dependencies file names.
-override CFILES := $(filter %.c,$(SRCFILES))
-override ASFILES := $(filter %.S,$(SRCFILES))
-ifeq ($(ARCH),x86_64)
-override NASMFILES := $(filter %.asm,$(SRCFILES))
-endif
-override OBJ := $(addprefix obj-$(ARCH)/,$(CFILES:.c=.c.o) $(ASFILES:.S=.S.o))
-ifeq ($(ARCH),x86_64)
-override OBJ += $(addprefix obj-$(ARCH)/,$(NASMFILES:.asm=.asm.o))
-endif
-override HEADER_DEPS := $(addprefix obj-$(ARCH)/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
+# ------------------------------------------------------------------
+# Sources & Objects
+# ------------------------------------------------------------------
+KERNEL_SRC := $(shell find -L src cc-runtime/src -type f ! -path 'src/arch/*' 2>/dev/null | LC_ALL=C sort)
+KERNEL_SRC += $(shell find -L src/arch/$(ARCH) -type f 2>/dev/null | LC_ALL=C sort)
 
-# Default target. This must come first, before header dependencies.
-.PHONY: all
+LIBC_SRC   := $(shell find ../libc -name '*.c' 2>/dev/null | LC_ALL=C sort)
+
+ALL_C_SRC  := $(filter %.c,$(KERNEL_SRC)) $(LIBC_SRC)
+ALL_S_SRC  := $(filter %.S,$(KERNEL_SRC))
+ifeq ($(ARCH),x86_64)
+ALL_ASM_SRC:= $(filter %.asm,$(KERNEL_SRC))
+endif
+
+KERNEL_OBJ := $(patsubst %.c,obj-$(ARCH)/%.c.o,$(filter %.c,$(KERNEL_SRC)))
+LIBC_OBJ   := $(patsubst %.c,obj-$(ARCH)/%.k.o,$(LIBC_SRC))
+ASM_OBJ    := $(patsubst %.S,obj-$(ARCH)/%.S.o,$(ALL_S_SRC))
+NASM_OBJ   := $(patsubst %.asm,obj-$(ARCH)/%.asm.o,$(ALL_ASM_SRC))
+
+ALL_OBJ    := $(KERNEL_OBJ) $(LIBC_OBJ) $(ASM_OBJ)
+ifeq ($(ARCH),x86_64)
+ALL_OBJ    += $(NASM_OBJ)
+endif
+
+ALL_DEPS   := $(ALL_OBJ:.o=.d)
+
+# ------------------------------------------------------------------
+# Rules
+# ------------------------------------------------------------------
+.PHONY: all clean distclean install uninstall
+
 all: bin-$(ARCH)/$(OUTPUT)
 
-# Include header dependencies.
--include $(HEADER_DEPS)
+bin-$(ARCH)/$(OUTPUT): $(ALL_OBJ) linker-scripts/$(ARCH).lds
+	@mkdir -p $(dir $@)
+	$(info [LD]  $@)
+	$(LD) $(LDFLAGS) $(ALL_OBJ) -o $@
 
-# Link rules for the final executable.
-bin-$(ARCH)/$(OUTPUT): GNUmakefile linker-scripts/$(ARCH).lds $(OBJ)
-	mkdir -p "$(dir $@)"
-	$(LD) $(LDFLAGS) $(OBJ) -o $@
-
-# Compilation rules for *.c files.
-obj-$(ARCH)/%.c.o: %.c GNUmakefile
-	mkdir -p "$(dir $@)"
-	$(info [CC] $<)  # This prints the command before running
+obj-$(ARCH)/%.c.o: %.c
+	@mkdir -p $(dir $@)
+	$(info [CC]  $<)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
-# Compilation rules for *.S files (Assembly files).
-obj-$(ARCH)/%.S.o: %.S GNUmakefile
-	mkdir -p "$(dir $@)"
-	$(info [ASM] $<)  # This prints the command before running
+obj-$(ARCH)/%.k.o: %.c
+	@mkdir -p $(dir $@)
+	$(info [CC]  $< (libc))
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+obj-$(ARCH)/%.S.o: %.S
+	@mkdir -p $(dir $@)
+	$(info [ASM] $<)
 	$(ASM) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 ifeq ($(ARCH),x86_64)
-# Compilation rules for *.asm files (NASM).
-obj-$(ARCH)/%.asm.o: %.asm GNUmakefile
-	mkdir -p "$(dir $@)"
-	$(info [NASM] $<)  # This prints the command before running
+obj-$(ARCH)/%.asm.o: %.asm
+	@mkdir -p $(dir $@)
+	$(info [NASM] $<)
 	$(NASM) $(NASMFLAGS) $< -o $@
 endif
 
-# Remove object files and the final executable.
-.PHONY: clean
+-include $(ALL_DEPS)
+
+# ------------------------------------------------------------------
+# Clean
+# ------------------------------------------------------------------
 clean:
 	rm -rf bin-$(ARCH) obj-$(ARCH)
 
-# Remove everything built and generated including downloaded dependencies.
-.PHONY: distclean
-distclean:
+distclean: clean
 	rm -rf bin-* obj-* .deps-obtained freestnd-c-hdrs cc-runtime limine-protocol
 
-# Install the final built executable to its final on-root location.
-.PHONY: install
+# ------------------------------------------------------------------
+# Install
+# ------------------------------------------------------------------
 install: all
 	install -d "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)"
 	install -m 644 bin-$(ARCH)/$(OUTPUT) "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)/$(OUTPUT)-$(ARCH)"
 
-# Try to undo whatever the "install" target did.
-.PHONY: uninstall
 uninstall:
 	rm -f "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)/$(OUTPUT)-$(ARCH)"
-	-rmdir "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)"
+	-rmdir "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)" 2>/dev/null || true

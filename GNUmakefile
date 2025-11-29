@@ -151,7 +151,7 @@ limine/limine:
 
 kernel/.deps-obtained:
 	./kernel/get-deps
-
+	
 .PHONY: kernel
 kernel: kernel/.deps-obtained
 	$(MAKE) -C kernel

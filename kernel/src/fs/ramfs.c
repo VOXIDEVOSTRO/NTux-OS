@@ -2,7 +2,7 @@
 #include <drivers/framebuffer/kprint.h>
 #include <mem/kmalloc.h>
 #include <mem/umalloc.h>
-#include <kernel_lib/string.h>
+#include <libc/string.h>
 
 static ramfs_node_t* ramfs_root = NULL;
 
@@ -140,7 +140,7 @@ ramfs_node_t* ramfs_create_file(const char* path, const char* data) {
     strncpy(path_copy, path, sizeof(path_copy) - 1);
     path_copy[sizeof(path_copy) - 1] = '\0';
 
-    char* last_slash = strrchr(path_copy, '/');
+    char* last_slash = strchr(path_copy, '/');
     if (!last_slash || last_slash == path_copy) return NULL;
     *last_slash = '\0';
     char* filename = last_slash + 1;

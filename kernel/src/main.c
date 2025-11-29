@@ -10,6 +10,7 @@
 #include <kernel_res/images/background3.h>
 #include <kernel_res/images/background4.h>
 
+#include <libc/printf.h>
 
 
 //interrupts includes
@@ -38,7 +39,7 @@
 #include <fs/ramfs.h>
 
 //kernel lib includes
-#include <kernel_lib/string.h>
+#include <libc/string.h>
 #include <kernel_lib/info.h>
 #include <kernel_lib/bool.h>
 
@@ -424,6 +425,7 @@ void kmain(void) {
     kprint("Welcome to NTux-OS!\n");
     shell_print_prompt();
     update_cursor_blink();
+    printf("printed per libc\n");
     while (1) {
         keyboard_poll();  
         char c;
