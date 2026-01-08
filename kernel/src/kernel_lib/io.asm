@@ -11,6 +11,8 @@ global inw         ; Declare inw function (input word)
 global outw        ; Declare outw function (output word)
 global inl         ; Declare inl function
 global outl        ; Decleare outl function
+global ind
+global outd
 
 section .text
 
@@ -59,3 +61,17 @@ outl:
     mov eax, esi       
     out dx, eax         
     ret
+; uint32_t ind(uint16_t port)
+; Diese Funktion liest ein 32-Bit Wort (4 Bytes) vom angegebenen I/O-Port
+ind:
+    mov dx, di          ; Portadresse in dx
+    in  eax, dx         ; Lese 32-Bit-Wert vom Port in eax
+    ret                 ; Rückgabe, der Wert befindet sich in eax (32-Bit Wert)
+
+; void outd(uint16_t port, uint32_t value)
+; Diese Funktion schreibt ein 32-Bit Wort (4 Bytes) zum angegebenen I/O-Port
+outd:
+    mov dx, di          ; Portadresse in dx
+    mov eax, esi        ; Der Wert, den wir schreiben wollen, ist in esi
+    out dx, eax         ; Schreibe den 32-Bit-Wert in eax zum Port in dx
+    ret                 ; Rückgabe

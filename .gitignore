@@ -1,0 +1,15 @@
+kernel/bin-x86_64/
+kernel/obj-x86_64/
+*.iso
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+*.symvers
+*.order
+*.log
+*.tmp
+*.swp
+build/
+out/

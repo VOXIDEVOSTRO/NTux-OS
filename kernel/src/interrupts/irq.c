@@ -18,8 +18,8 @@ void irq_handler_c(uint64_t *stack) {
     if (irq >= 0 && irq < 16 && irq_handlers[irq]) {
         irq_handlers[irq]();
     } else {
-        kprint_error("Unhandled IRQ: ");
-        kprint(irq);
+        //kprint_error("Unhandled IRQ: ");
+        //kprint(irq);
     }
 
     pic_send_eoi(irq);

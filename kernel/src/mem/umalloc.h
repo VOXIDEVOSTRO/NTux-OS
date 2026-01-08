@@ -1,4 +1,3 @@
-//this class is for userspaces mem alloc
 
 #ifndef UMALLOC_H
 #define UMALLOC_H

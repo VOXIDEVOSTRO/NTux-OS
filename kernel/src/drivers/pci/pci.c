@@ -1,170 +1,311 @@
-// drivers/pci/pci.c
-#include <drivers/pci/pci.h>
+#include <stdint.h>
+#include "pci.h"
 #include <kernel_lib/io.h>
 #include <drivers/framebuffer/kprint.h>
+#include <kernel_lib/vector.h>
 
-// PCI Configuration Space Ports
-#define PCI_CONFIG_ADDRESS  0xCF8
-#define PCI_CONFIG_DATA     0xCFC
+#define MAX_BUS                 1
+#define MAX_DEVICE              32
+#define MAX_FUNCTION            8
 
-// PCI Class Names (English)
-static const char* pci_class_name(uint8_t class_code) {
-    switch (class_code) {
-        case 0x00: return "Unclassified Device";
-        case 0x01: return "Mass Storage Controller";
-        case 0x02: return "Network Controller";
-        case 0x03: return "Display Controller";
-        case 0x04: return "Multimedia Controller";
-        case 0x05: return "Memory Controller";
-        case 0x06: return "Bridge";
-        case 0x07: return "Communication Controller";
-        case 0x08: return "System Peripheral";
-        case 0x09: return "Input Device Controller";
-        case 0x0A: return "Docking Station";
-        case 0x0B: return "Processor";
-        case 0x0C: return "Serial Bus Controller";     // USB!
-        case 0x0D: return "Wireless Controller";
-        case 0x0E: return "Intelligent Controller";
-        case 0x0F: return "Satellite Controller";
-        case 0x10: return "Encryption Controller";
-        case 0x11: return "Signal Processing Controller";
-        default:   return "Unknown";
-    }
-}
+vec_new(pci_device_t, pci_devices);
 
-static const char* usb_controller_type(uint8_t prog_if) {
-    switch (prog_if) {
-        case 0x00: return "UHCI";
-        case 0x10: return "OHCI";
-        case 0x20: return "EHCI";
-        case 0x30: return "XHCI";
-        case 0x80: return "USB (generic)";
-        case 0xFE: return "USB Device";
-        default:   return "Unknown USB";
-    }
-}
+static void pci_scan_bus(uint8_t bus_id);
+static void pci_scan_device(uint8_t bus_id, uint8_t dev_id);
 
-// Safe PCI scan – only Bus 0 (prevents faults on most systems)
-void pci_scan_all(void) {
-    kprint("╔═══════════════════════════════════════════════════════════╗\n");
-    kprint("║                   PCI DEVICE SCAN                         ║\n");
-    kprint("╚═══════════════════════════════════════════════════════════╝\n");
+static pci_device_desc_t device_table[] = {
+    /* Intel */
+    { 0x8086, 0x0154, "3rd Gen Core processor DRAM Controller" },
+    { 0x8086, 0x0166, "3rd Gen Core processor Graphics Controller" },
+    { 0x8086, 0x0A04, "Haswell-ULT DRAM Controller" },
+    { 0x8086, 0x0A0C, "Haswell-ULT HD Audio Controller" },
+    { 0x8086, 0x0A16, "Haswell-ULT Integrated Graphics Controller" },
+    { 0x8086, 0x153A, "Ethernet Connection I217-LM" },
+    { 0x8086, 0x100E, "Gigabit Ethernet Controller" },
+    { 0x8086, 0x10D3, "82574L Gigabit Network Connection" },
+    { 0x8086, 0x10EA, "82577LM Gigabit Network Connection" },
+    { 0x8086, 0x1237, "440FX - 82441FX PMC" },
+    { 0x8086, 0x1570, "Ethernet Connection I219-V" },
+    { 0x8086, 0x1604, "Broadwell-U Host Bridge -OPI" },
+    { 0x8086, 0x160C, "Broadwell-U Audio Controller" },
+    { 0x8086, 0x1616, "HD Graphics 5500" },
+    { 0x8086, 0x1904,
+     "Xeon E3-1200 v5/E3-1500 v5/6th Gen Core Processor Host Bridge/DRAM Registers"
+     },
+    { 0x8086, 0x1911,
+     "Xeon E3-1200 v5/v6 / E3-1500 v5 / 6th/7th/8th Gen Core Processor Gaussian Mixture Model"
+     },
+    { 0x8086, 0x1916, "Skylake GT2 [HD Graphics 520]" },
+    { 0x8086, 0x9D2F, "Sunrise Point-LP USB 3.0 xHCI Controller" },
+    { 0x8086, 0x9D03, "Sunrise Point-LP SATA Controller [AHCI mode]" },
+    { 0x8086, 0x9D13, "Sunrise Point-LP PCI Express Root Port #4" },
+    { 0x8086, 0x9D14, "Sunrise Point-LP PCI Express Root Port #5" },
+    { 0x8086, 0x9D18, "Sunrise Point-LP PCI Express Root Port #9" },
+    { 0x8086, 0x9D31, "Sunrise Point-LP Thermal subsystem" },
+    { 0x8086, 0x9D3A, "Sunrise Point-LP CSME HECI #1" },
+    { 0x8086, 0x9D21, "Sunrise Point-LP PMC, " },
+    { 0x8086, 0x9D23, "Sunrise Point-LP SMBus" },
+    { 0x8086, 0x9D48, "Sunrise Point-LP LPC Controller" },
+    { 0x8086, 0x9D70, "Sunrise Point-LP HD Audio" },
+    { 0x8086, 0x1C20,
+     "6 Series/C200 Series Chipset Family High Definition Audio Controller"
+     },
+    { 0x8086, 0x2922,
+     "82801IR/IO/IH (ICH9R/DO/DH) 6 port SATA Controller" },
+    { 0x8086, 0x29C0, "82G33/G31/P35/P31 Express DRAM Controller" },
+    { 0x8086, 0x7000, "82371SB PIIX3 ISA" },
+    { 0x8086, 0x7010, "82371SB PIIX3 IDE" },
+    { 0x8086, 0x7110, "82371AB/EB/MB PIIX4 ISA" },
+    { 0x8086, 0x7111, "82371AB/EB/MB PIIX4 IDE" },
+    { 0x8086, 0x7113, "82371AB/EB/MB PIIX4 ACPI" },
+    { 0x8086, 0x7192,
+     "440BX/ZX/DX - 82443BX/ZX/DX Host bridge (AGP disabled)" },
+    /* Realtek */
+    { 0x10EC, 0x8139, "RTL-8100/8101L/8139 pci Fast Ethernet Adapter" },
+    /* QEMU */
+    { 0x1234, 0x1111, "QEMU Virtual Video Controller" },
+    /* VirtualBox */
+    { 0x80EE, 0xBEEF, "VirtualBox Graphics Adapter" },
+    { 0x80EE, 0xCAFE, "VirtualBox Guest Service" },
+    /* Hyper-V */
+    { 0x1414, 0x5353, "Hyper-V virtual VGA" },
+    /* End */
+    { 0, 0, "Unknown device" }
+};
 
-    int found = 0;
+static const char unknown_device_desc[] = "Unknown device";
 
-    // Only scan Bus 0 → this is safe and finds all common devices (including USB)
-    for (uint32_t bus = 0; bus < 1; ++bus) {
-        kprintf("Scanning Bus %u...\n", bus);
-
-        for (uint32_t dev = 0; dev < 32; ++dev) {
-            uint32_t data = pci_read(bus, dev, 0, 0x00);
-            uint16_t vendor = data & 0xFFFF;
-            uint16_t device_id = data >> 16;
-
-            if (vendor == 0xFFFF || vendor == 0x0000) continue;
-
-            found++;
-
-            uint32_t class_data = pci_read(bus, dev, 0, 0x08);
-            uint8_t class_code = class_data >> 24;
-            uint8_t subclass   = (class_data >> 16) & 0xFF;
-            uint8_t prog_if    = (class_data >> 8)  & 0xFF;
-            uint8_t revision   = class_data & 0xFF;
-
-            uint8_t header_type = (pci_read(bus, dev, 0, 0x0C) >> 16) & 0xFF;
-
-            kprintf("%02x:%02x.%d  Vendor:%04x Device:%04x  Rev:%02x  %02x:%02x:%02x  %s",
-                    bus, dev, 0, vendor, device_id, revision, class_code, subclass, prog_if,
-                    pci_class_name(class_code));
-
-            if (class_code == 0x0C && subclass == 0x03) {
-                kprintf("  ← %s", usb_controller_type(prog_if));
+const char *pci_device_id_to_string(pci_device_t * device)
+{
+    for (uint64_t i = 0;; i++) {
+        /* Reach the last line */
+        if (device_table[i].vendor_id == 0) {
+            return unknown_device_desc;
+        }
+        if (device_table[i].vendor_id == device->vendor_id) {
+            if (device_table[i].device_id == device->device_id) {
+                return device_table[i].desc;
             }
+        }
+    }
+    return unknown_device_desc;
+}
 
-            kprint("\n");
+static void pci_read_bar(uint32_t id, uint32_t index, uint32_t * address,
+                         uint32_t * mask)
+{
+    uint32_t reg = PCI_CONFIG_BAR0 + index * sizeof(uint32_t);
 
-            // Multi-function device?
-            if (header_type & 0x80) {
-                for (uint32_t func = 1; func < 8; ++func) {
-                    uint32_t fdata = pci_read(bus, dev, func, 0x00);
-                    if ((fdata & 0xFFFF) == 0xFFFF) continue;
+    /* Get address */
+    *address = pci_ind(id, reg);
 
-                    uint16_t fvendor = fdata & 0xFFFF;
-                    uint16_t fdevice = fdata >> 16;
-                    uint32_t fclass = pci_read(bus, dev, func, 0x08);
-                    uint8_t fclass_code = fclass >> 24;
+    /* Find out size of the bar */
+    pci_outd(id, reg, 0xffffffff);
+    *mask = pci_ind(id, reg);
 
-                    kprintf("   └─ %02x:%02x.%d  Vendor:%04x Device:%04x  %s\n",
-                            bus, dev, func, fvendor, fdevice, pci_class_name(fclass_code));
+    /* Restore adddress */
+    pci_outd(id, reg, *address);
+}
+
+void pci_get_bar(pci_bar_t * bar, uint32_t id, uint32_t index)
+{
+    /* Read pci bar register */
+    uint32_t addr_low;
+    uint32_t mask_low;
+    pci_read_bar(id, index, &addr_low, &mask_low);
+
+    if (addr_low & PCI_BAR_64) {
+        /* 64-bit mmio */
+        uint32_t addr_high;
+        uint32_t mask_high;
+        pci_read_bar(id, index + 1, &addr_high, &mask_high);
+
+        bar->u.address =
+            (void *) (((uintptr_t) addr_high << 32) | (addr_low & ~0xf));
+        bar->size =
+            ~(((uint64_t) mask_high << 32) | (mask_low & ~0xf)) + 1;
+        bar->flags = addr_low & 0xf;
+    } else if (addr_low & PCI_BAR_IO) {
+        /* I/O register */
+        bar->u.port = (uint16_t) (addr_low & ~0x3);
+        bar->size = (uint16_t) (~(mask_low & ~0x3) + 1);
+        bar->flags = addr_low & 0x3;
+    } else {
+        /* 32-bit mmio */
+        bar->u.address = (void *) (uintptr_t) (addr_low & ~0xf);
+        bar->size = ~(mask_low & ~0xf) + 1;
+        bar->flags = addr_low & 0xf;
+    }
+}
+
+uint8_t pci_inb(uint32_t id, uint32_t offset)
+{
+    uint32_t address = 0x80000000 | id | (offset & 0xFC);
+
+    outd(PCI_PORT_ADDR, address);
+    return inb(PCI_PORT_DATA + (offset & 0x03));
+}
+
+void pci_outb(uint32_t id, uint32_t offset, uint8_t data)
+{
+    uint32_t address = 0x80000000 | id | (offset & 0xFC);
+
+    outd(PCI_PORT_ADDR, address);
+    outb(PCI_PORT_DATA + (offset & 0x03), data);
+}
+
+uint16_t pci_inw(uint32_t id, uint32_t offset)
+{
+    uint32_t address = 0x80000000 | id | (offset & 0xFC);
+
+    outd(PCI_PORT_ADDR, address);
+    return inw(PCI_PORT_DATA + (offset & 0x02));
+}
+
+
+void pci_outw(uint32_t id, uint32_t offset, uint16_t data)
+{
+    uint32_t address = 0x80000000 | id | (offset & 0xFC);
+
+    outd(PCI_PORT_ADDR, address);
+    outw(PCI_PORT_DATA + (offset & 0x02), data);
+}
+
+uint32_t pci_ind(uint32_t id, uint32_t offset)
+{
+    uint32_t address = 0x80000000 | id | (offset & 0xFC);
+
+    outd(PCI_PORT_ADDR, address);
+    return ind(PCI_PORT_DATA);
+}
+
+void pci_outd(uint32_t id, uint32_t offset, uint32_t data)
+{
+    uint32_t address = 0x80000000 | id | (offset & 0xFC);
+
+    outd(PCI_PORT_ADDR, address);
+    outd(PCI_PORT_DATA, data);
+}
+
+#define pci_func_exist(id)    ((uint16_t)(pci_ind(id, PCI_CLASS_LEGACY) & 0xFFFF) != 0xFFFF)
+#define pci_read_vendor_id(id) (pci_ind(id, PCI_CLASS_LEGACY) & 0xFFFF)
+#define pci_read_device_id(id) (pci_ind(id, PCI_CLASS_LEGACY) >> 16)
+#define pci_read_class(id)     (pci_ind(id, PCI_CLASS_PERIHPERALS) >> 24)
+#define pci_read_subclass(id)  ((pci_ind(id, PCI_CLASS_PERIHPERALS) >> 16) & 0xFF)
+#define pci_read_prog_if(id)   ((pci_ind(id, PCI_CLASS_PERIHPERALS) >> 8) & 0xFF)
+#define pci_read_header(id)    (((pci_ind(id, PCI_CLASS_PERIHPERALS) >> 16) & ~(1 << 7)) & 0xFF)
+#define pci_read_sub_bus(id)   ((pci_ind(id, 0x18) >> 8) & 0xFF)
+#define pci_is_bridge(id)      (pci_read_header(id) == 0x1 && pci_read_class(id) == 0x6)
+#define pci_has_multi_func(id) (((pci_ind(id, PCI_CLASS_SERIAL_BUS) >> 16) & (1 << 7)) & 0xFF)
+
+
+static void pci_scan_device(uint8_t bus_id, uint8_t dev_id)
+{
+    pci_device_t device = { 0 };
+    device.bus = bus_id;
+    device.func = 0;
+    device.device = dev_id;
+
+    uint8_t func_exist = pci_func_exist(dev_id);
+    uint8_t is_bridge = pci_is_bridge(dev_id);
+    uint8_t has_multi_func = pci_has_multi_func(dev_id);
+
+
+    if (is_bridge) {
+        kprintf("PCI:\t%2x:%2x.%1x - %4x:%4x [bridge] func %s\n",
+              device.bus, device.device, device.func,
+              device.vendor_id, device.device_id,
+              func_exist ? "existed" : "not existed");
+    }
+
+    if (func_exist) {
+        if (is_bridge) {
+            uint8_t sub_bus_id = pci_read_sub_bus(&device);
+            if (sub_bus_id != bus_id) {
+                kprintf("PCI:\tRead sub bus %2x\n", sub_bus_id);
+                pci_scan_bus(pci_read_sub_bus(&device));
+            }
+        }
+
+        device.multifunction = has_multi_func;
+        device.device_id = pci_read_device_id(&device);
+        device.vendor_id = pci_read_vendor_id(&device);
+
+        kprintf("PCI:\t%2x:%2x.%1x - %4x:%4x %s\n",
+              device.bus, device.device, device.func,
+              device.vendor_id, device.device_id,
+              pci_device_id_to_string(&device));
+        vec_push_back(&pci_devices, device);
+
+        if (device.multifunction) {
+            for (uint8_t func = 1; func < MAX_FUNCTION; func++) {
+                pci_device_t device2 = { 0 };
+                device2.bus = bus_id;
+                device2.func = func;
+                device2.device = dev_id;
+
+                if (pci_func_exist(&device2)) {
+                    device2.device_id = pci_read_device_id(&device2);
+                    device2.vendor_id = pci_read_vendor_id(&device2);
+
+                    kprintf("PCI:\t%2x:%2x.%1x - %4x:%4x %s\n",
+                          device2.bus, device2.device, device2.func,
+                          device2.vendor_id, device2.device_id,
+                          pci_device_id_to_string(&device2));
+                    vec_push_back(&pci_devices, device2);
                 }
             }
         }
     }
-
-    kprintf("\nPCI scan complete: %d device(s) found.\n\n", found);
 }
 
-// Build PCI config address
-static inline uint32_t pci_make_address(uint32_t bus, uint32_t dev, uint32_t func, uint32_t offset) {
-    return 0x80000000u |
-           (bus << 16) |
-           (dev << 11) |
-           (func << 8) |
-           (offset & 0xFC);
-}
-
-// Read/Write functions
-uint32_t pci_read(uint32_t bus, uint32_t dev, uint32_t func, uint32_t offset) {
-    outl(PCI_CONFIG_ADDRESS, pci_make_address(bus, dev, func, offset));
-    return inl(PCI_CONFIG_DATA);
-}
-
-void pci_write(uint32_t bus, uint32_t dev, uint32_t func, uint32_t offset, uint32_t value) {
-    outl(PCI_CONFIG_ADDRESS, pci_make_address(bus, dev, func, offset));
-    outl(PCI_CONFIG_DATA, value);
-}
-
-// PCI init test
-void pci_init(void) {
-    kprint("[PCI] Testing config space access... ");
-    outl(PCI_CONFIG_ADDRESS, 0x80000000);
-    if (inl(PCI_CONFIG_ADDRESS) == 0x80000000) {
-        kprint_ok("");
-    } else {
-        kprint_error("PCI not available!");
+void pci_scan_bus(uint8_t bus_id)
+{
+    for (uint64_t dev = 0; dev < MAX_DEVICE; dev++) {
+        pci_scan_device(bus_id, dev);
     }
 }
 
-// Find device by class/subclass (also limited to Bus 0 for safety)
-uint32_t pci_find_device(uint8_t class_code, uint8_t subclass, uint8_t prog_if) {
-    for (uint32_t bus = 0; bus < 1; ++bus) {
-        for (uint32_t dev = 0; dev < 32; ++dev) {
-            uint32_t data = pci_read(bus, dev, 0, 0x00);
-            if ((data & 0xFFFF) == 0xFFFF) continue;
-
-            uint32_t class_data = pci_read(bus, dev, 0, 0x08);
-            uint8_t cc = class_data >> 24;
-            uint8_t sc = (class_data >> 16) & 0xFF;
-            uint8_t pi = (class_data >> 8) & 0xFF;
-
-            if (cc == class_code && sc == subclass && (prog_if == 0xFF || pi == prog_if)) {
-                kprintf("[PCI] Found: %02x:%02x.0 Vendor:%04x Device:%04x → %s\n",
-                        bus, dev, data & 0xFFFF, data >> 16,
-                        (class_code == 0x0C && subclass == 0x03 && pi == 0x00) ? "UHCI" : "Device");
-                return (bus << 16) | (dev << 8);
-            }
+void pci_init(void)
+{
+    for (uint64_t bus_id = 0; bus_id < MAX_BUS; bus_id++) {
+        for (uint64_t dev = 0; dev < MAX_DEVICE; dev++) {
+            pci_scan_device(bus_id, dev);
         }
     }
-    return 0;
+
+    kprintf("PCI: Full recursive device scan done, [%d] devices found\n",
+          vec_length(&pci_devices));
 }
 
-// Get I/O BAR (UHCI uses BAR4)
-uint32_t pci_get_bar(uint32_t pci_addr, int bar_index) {
-    uint32_t bus = pci_addr >> 16;
-    uint32_t dev = (pci_addr >> 8) & 0xFF;
-    uint32_t bar = pci_read(bus, dev, 0, 0x10 + bar_index * 4);
-    if (bar & 1) {
-        return bar & 0xFFFFFFFC;  // I/O space
+void pci_list(void)
+{
+    for (uint64_t i = 0; i < vec_length(&pci_devices); i++) {
+        pci_device_t dev = vec_at(&pci_devices, i);
+
+        const char *desc = pci_device_id_to_string(&dev); 
+        kprintf("PCI Device: %02x:%02x.%01x - Vendor: %04x, Device: %04x\n", 
+                dev.bus, dev.device, dev.func, dev.vendor_id, dev.device_id);
+        kprintf("Device: %s\n", pci_device_id_to_string(&dev));
+    
+        }
+}
+
+pci_device_t* pci_find_device(uint16_t vendor_id, uint16_t device_id)
+{
+    for (uint64_t i = 0; i < vec_length(&pci_devices); i++) {
+        pci_device_t *dev = &vec_at(&pci_devices, i);
+        
+        kprintf("Scanning device: %02x:%02x.%01x Vendor: %04x, Device: %04x\n", 
+                dev->bus, dev->device, dev->func, dev->vendor_id, dev->device_id);
+
+        if (dev->vendor_id == vendor_id && dev->device_id == device_id) {
+            kprintf("Found device: %02x:%02x.%01x Vendor: %04x, Device: %04x\n", 
+                    dev->bus, dev->device, dev->func, dev->vendor_id, dev->device_id);
+            return dev;  
+        }
     }
-    return 0;
+    
+    kprintf("Device not found: Vendor: %04x, Device: %04x\n", vendor_id, device_id);
+    return NULL;  
 }

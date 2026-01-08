@@ -14,7 +14,6 @@ int info_has_avx(void);
 int info_has_avx2(void);
 
 void info_cmd_cpuinfo(void);
-void info_cmd_meminfo(void);
 void info_cmd_uptime(void);
 
 #endif

@@ -18,6 +18,7 @@ void clear_screen_lim(volatile struct limine_framebuffer* fb, uint32_t color) {
         }
     }
 }
+
 void draw_char_lim(volatile struct limine_framebuffer* fb, int x, int y, char c, uint32_t color) {
     for (int row = 0; row < 8; row++) {
         uint8_t bits = font8x8_basic[(int)c][row];

@@ -17,21 +17,18 @@ void keyboard_init() {
 }
 
 void keyboard_poll() {
-    uint8_t status = inb(0x64);  
-    if(!(status & 1)) return;    
-
-    uint8_t scancode = inb(0x60);
-
-    uint8_t released = scancode & 0x80;
-    uint8_t key = scancode & 0x7F;
-
-    if(key == 0x2A || key == 0x36) shift_pressed = !released; 
-    if(key == 0x1D) ctrl_pressed  = !released; 
-    if(key == 0x38) alt_pressed   = !released; 
-
-    if(!released) {
-        char c = shift_pressed ? scancode_ascii_shift[key] : scancode_ascii[key];
-        if(c) rb_put(&kb_buffer, c);
+    while (inb(0x64) & 1) {  
+        uint8_t scancode = inb(0x60);
+        uint8_t released = scancode & 0x80;
+        uint8_t key = scancode & 0x7F;
+        if (key == 0x2A || key == 0x36) shift_pressed = !released; 
+        if (key == 0x1D) ctrl_pressed  = !released; 
+        if (key == 0x38) alt_pressed   = !released; 
+        if (!released) {
+            char c = shift_pressed ? scancode_ascii_shift[key] : scancode_ascii[key];
+            if(c) rb_put(&kb_buffer, c);  
+        }
+        rb_empty(&kb_buffer);
     }
 }
 

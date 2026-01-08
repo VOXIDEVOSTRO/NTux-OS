@@ -92,15 +92,6 @@ void info_cmd_cpuinfo(void)
 // ---------------------------
 // NTux-OS: Shell command to display memory info
 // ---------------------------
-void info_cmd_meminfo(void)
-{
-    //uint32_t free = pmm_get_free_memory_32() ;
-
-
-    kprint("Free RAM   : ");
-    //kprint_uint(free / 1024 / 1024);
-    kprint(" MiB\n");
-}
 
 
 // ---------------------------

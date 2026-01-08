@@ -6,12 +6,7 @@
 
 //res
 #include <kernel_res/images/background.h>
-#include <kernel_res/images/background2.h>
-#include <kernel_res/images/background3.h>
-#include <kernel_res/images/background4.h>
-
 #include <libc/printf.h>
-
 
 //interrupts includes
 #include <interrupts/gdt.h>
@@ -27,13 +22,16 @@
 #include <drivers/framebuffer/fb.h>
 #include <drivers/framebuffer/kprint.h>
 #include <drivers/audio/audio.h>
+#include <drivers/fs/FAT/fat32.h>
+#include <drivers/gpu/virtio/virtio.h>
+#include <drivers/sata/ata.h>
+#include <drivers/ps2/mose.h>
 
 //mem includes
 #include <mem/vmm.h>
 #include <mem/pmm.h>
 #include <mem/kmalloc.h>
 #include <mem/umalloc.h>
-
 
 //fs includes
 #include <fs/ramfs.h>
@@ -46,34 +44,35 @@
 //test
 #include <operators/power.h>
 
+//elf loading
+#include <drivers/elf/elf.h>
+
+//cpu
+#include <cpu/thread.h>
+
+//debug
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_module_request module_request = {
+    .id = LIMINE_MODULE_REQUEST_ID,
+    .revision = 0
+};
+
+bool is_mouse_connected = false;
+static Fat fat; 
 
 static int BACKGROUND_WT;
 static int BACKGROUND_HT;
+static virtio_gpu_t virtio_gpu; 
 static uint64_t background_shell;
 
-static volatile struct limine_framebuffer* framebuffer;
-static struct limine_memmap_response *memmap ;
+volatile struct limine_framebuffer* front_buffer;
+volatile struct limine_framebuffer* back_buffer;
+static struct limine_memmap_response *memmap;
 static int fb_width, fb_height;
 static cursor_t shell_cursor_struct;
 cursor_t* shell_cursor;
 uint32_t color = COLOR_WHITE;
-
-struct limine_shutdown_request {
-    uint64_t id[4];
-    uint64_t revision;
-    struct limine_shutdown_response *response;
-    void (*callback)(void);
-};
-
-struct limine_shutdown_response {
-    uint64_t revision;
-};
-
-
-#ifndef LIMINE_SHUTDOWN_REQUEST
-#define LIMINE_SHUTDOWN_REQUEST 0x8c6c3b258c6c3b25ULL, 0x8c6c3b258c6c3b25ULL, \
-                                0x8c6c3b258c6c3b25ULL, 0x8c6c3b258c6c3b25ULL
-#endif
 
 __attribute__((used, section(".limine_requests")))
 volatile struct limine_framebuffer_request framebuffer_request = {
@@ -86,56 +85,53 @@ volatile struct limine_memmap_request memmap_request = {
     .revision = 0
 };
 
+static volatile struct limine_module_response *module_response = NULL;
+static DiskOps ops;
 
+void init_kernel_lib(void) {}
 
-
-__attribute__((used, section(".limine_requests")))
-static volatile struct limine_shutdown_request shutdown_request = {
-    .id = { LIMINE_SHUTDOWN_REQUEST },
-    .revision = 0
-};
-
-void (*limine_shutdown_callback)(void) = NULL;
-
-void init_kernel_lib(void){
-    
+void swap_buffers() {
+    volatile struct limine_framebuffer* temp = front_buffer;
+    front_buffer = back_buffer;
+    back_buffer = temp;
 }
 
 void init_fb(void) {
-    if (framebuffer_request.response == NULL ||
-        framebuffer_request.response->framebuffer_count < 1) {
+    if (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count < 1) {
+        // Fehlerbehandlung, falls kein framebuffer vorhanden ist
     }
 
-    framebuffer = framebuffer_request.response->framebuffers[0];
-    fb_width = (int)framebuffer->width;
-    fb_height = (int)framebuffer->height-3;
+    back_buffer = framebuffer_request.response->framebuffers[0];
+    fb_width = (int)back_buffer->width;
+    fb_height = (int)back_buffer->height - 3;
+
+    front_buffer = framebuffer_request.response->framebuffers[0]; // Initial Frontbuffer
+    back_buffer = framebuffer_request.response->framebuffers[0];  // Initial Backbuffer
+
     BACKGROUND_HT = BACKGROUND_HEIGHT;
     BACKGROUND_WT = BACKGROUND_WIDTH;
     background_shell = background;
 
-
-    clear_screen_lim(framebuffer, COLOR_BLACK);
+    clear_screen_lim(back_buffer, COLOR_BLACK);  
 
     shell_cursor = &shell_cursor_struct;
     init_cursor(shell_cursor, fb_width, fb_height);
-    init_kprint_global(framebuffer, shell_cursor, color);
+    init_kprint_global(back_buffer, shell_cursor, color);  
 
-    kprint_ok("frambuffer init");
+    kprint_ok("Framebuffer init completed\n");
 }
 
-void init_ramfs_test(){
+void init_ramfs_test() {
     kprint_ok("initing ramfs");
     ramfs_init();
 
     kprint("=== ROOT TEST ===\n");
-
-
     kprint("=== MKDIR /etc ===\n");
     ramfs_mkdir("/etc");
 
     kprint("=== LIST ROOT ===\n");
     ramfs_list_dir("/");
-    
+
     kprint("=== CREATE FILE ===\n");
     ramfs_create_file("/etc/hosts", "127.0.0.1 localhost");
     ramfs_create_file("readme.txt", "This is a test file in RAMFS.");
@@ -148,18 +144,80 @@ void init_ramfs_test(){
     ramfs_delete_file("/etc/hosts");
     ramfs_delete_file("/");
 
-
     kprint("=== LIST /etc AFTER DELETE ===\n");
     ramfs_list_dir("/");
-
 }
-void init_mem(void){
+
+void init_fs(void) {
+    if (!ata_init()) {
+        kprint("no ata device found\n");
+        return;
+    }
+
+    kprint_ok("ata device found\n");
+
+    uint64_t bytes = ata_get_total_space_bytes();
+    kprint("Total ATA device size: ");
+    kprint_uint(bytes / (1024 * 1024 * 1024)); 
+    kprint(" GiB (");
+    kprint_uint(bytes);
+    kprint(" bytes)\n");
+
+    DiskOps ops;
+    if (!ata_get_disk_ops(&ops)) {
+        kprint_error("failed to get disk operations\n");
+        return;
+    }
+
+    uint8_t buf[512];
+    if (!ops.read(buf, 0)) {
+        kprint_error("failed to read MBR (sector 0)\n");
+        return;
+    }
+
+    kprint("MBR signature: 0x");
+    kprinthex(buf[510]);
+    kprinthex(buf[511]);
+    kprint("  ");
+    
+    if (buf[510] == 0x55 && buf[511] == 0xAA) {
+        kprint_ok("valid\n");
+    } else {
+        kprint_error("invalid! (not a bootable disk)\n");
+    }
+
+    kprint("Probing FAT32 filesystem...\n");
+    int err = fat_probe(&ops, 0);
+    if (err != FAT_ERR_NONE) {
+        kprint_error("FAT32 probe failed: ");
+        kprint_error(fat_get_error(err));
+        kprint("\n");
+        return;
+    }
+
+    kprint_ok("FAT32 filesystem detected\n");
+
+    err = fat_mount(&ops, 0, &fat, "/");
+    if (err != FAT_ERR_NONE) {
+        kprint_error("FAT32 mount failed: ");
+        kprint_error(fat_get_error(err));
+        kprint("\n");
+        return;
+    }
+
+    kprint_ok("FAT32 mounted successfully\n");
+
+    kprint("Root directory contents:\n");
+    fat_ls("/");
+    sleep_s(10);
+}
+
+void init_mem(void) {
     kprint_ok("initing mem ");
-    memmap= memmap_request.response;
+    memmap = memmap_request.response;
     vmm_init(memmap);
-    kprint_ok("mem init completet ");
+    kprint_ok("mem init completed ");
 }
-
 
 void init_interrupts(void) {
     interrupts_disable();
@@ -174,38 +232,72 @@ void init_interrupts(void) {
     interrupts_enable();
     kprint_ok("Enabled interrupts");
 
-    if (interrupts_are_enabled())
-    {
+    if (interrupts_are_enabled()) {
         kprint_ok("interrupts are working and enabled");
-    }else if(!interrupts_are_enabled()){
+    } else {
         shell_cursor = &shell_cursor_struct;
         init_cursor(shell_cursor, fb_width, fb_height);
-        init_kprint_global(framebuffer, shell_cursor, color);
+        init_kprint_global(back_buffer, shell_cursor, color);
         kprint_error("interrupts are not enabled");
-        clear_screen_lim(framebuffer, COLOR_LIGHT_BLUE_SCREEN_BG);
+        clear_screen_lim(back_buffer, COLOR_LIGHT_BLUE_SCREEN_BG);
         kprint(":(\n\n");
         kprint_error("Critical Error: Interrupts failed to enable.\nSystem Halted.");
         __asm__ volatile ("hlt");
     }
-    
+}
+
+void init_cpu() {
+    thread_init();
 }
 
 void init_drivers(void) {
     keyboard_init();
-    kprint_ok("PS/2 controller initialized");
+    kprint_ok("PS/2 keyboard found and initialized");
+    bool connected = mouse_init();
+    is_mouse_connected = connected;
+    kprint_ok("PS/2 Mouse found and initialized");
     pci_init();
     kprint_ok("PCI bus initialized");
     beep(440, 5);
-    kprint_ok("Audio initzialized");
+    kprint_ok("Audio initialized");
 }
 
+void thread1_function(void) {
+    while (1) {
+        kprint("message from thread 1\n");
+        thread_yield();
+    }
+}
+
+void thread2_function(void) {
+    while (1) {
+        kprint("message from thread 2\n");
+        thread_yield();
+    }
+}
+
+void init_gpu(void){
+    pci_device_t *device = pci_find_device(0x1AF4, 0x1050);
+    if (device != NULL) {
+        virtio_gpu_init(device);  
+    } else {
+        kprint_error("Virtio GPU not found!\n");
+    }
+    virtio_gpu_draw_line(10, 10, 200, 150, COLOR_RED);
+    virtio_gpu_draw_text(50, 50, "Hello from Virtio GPU!", COLOR_GREEN);
+}
 
 void init_kernel(void) {
     init_fb();
     init_interrupts();
     init_drivers();
     init_mem();
-    init_ramfs_test();
+    init_ramfs_test(); 
+    //init_acpi();
+    //kprint_ok("init ACPI");
+    init_cpu();
+    init_fs();
+    init_gpu();
     boolean running = true;
     kprint_ok(boolean_to_string(running));
     kprint("\n");
@@ -218,7 +310,6 @@ void init_kernel(void) {
     kprint_ok("Kernel initialized.");
     play_startup_sound();
 }
-
 
 /* test shell here*/
 #define SHELL_MAX_INPUT 128
@@ -236,49 +327,48 @@ static void shell_clear_screen() {
         framebuffer_request.response->framebuffer_count < 1) {
     }
 
-    framebuffer = framebuffer_request.response->framebuffers[0];
-    fb_width = (int)framebuffer->width;
-    fb_height = (int)framebuffer->height-3;
+    back_buffer = framebuffer_request.response->framebuffers[0];
+    fb_width = (int)back_buffer->width;
+    fb_height = (int)back_buffer->height - 3;
 
-    clear_screen_lim(framebuffer, COLOR_BLACK);
+    clear_screen_lim(back_buffer, COLOR_BLACK); 
 
     shell_cursor = &shell_cursor_struct;
     init_cursor(shell_cursor, fb_width, fb_height);
-    init_kprint_global(framebuffer, shell_cursor, color);
-    draw_image_from_uint64_t(framebuffer,background_shell,BACKGROUND_WT,BACKGROUND_HT);
+    init_kprint_global(back_buffer, shell_cursor, color);  
+    draw_image_from_uint64_t(back_buffer, background_shell, BACKGROUND_WT, BACKGROUND_HT);
+
+    swap_buffers();  
 }
 
-static void shell_backspace() {
-    if (input_len > 0) {
-        input_len--;  
-        input_buffer[input_len] = '\0';  
+static void shell_backspace() {  
+    if (input_len == 0) return;
 
-        if (cursor_visible) clear_cursor_lim(framebuffer, shell_cursor);  
-        if (shell_cursor->x >= shell_cursor->char_width) {
-            shell_cursor->x -= shell_cursor->char_width;  
-        } else if (shell_cursor->y > 0) {
-            shell_cursor->y -= shell_cursor->char_height;  
-            shell_cursor->x = fb_width - shell_cursor->char_width;  
-        }
+    input_len--;
+    input_buffer[input_len] = '\0';
 
-        draw_char_lim(framebuffer->address, fb_width, shell_cursor->x, shell_cursor->y, 0x000000);  
-
-        cursor_visible = 1;
-        render_cursor_lim(framebuffer, shell_cursor, color);  
+    if (shell_cursor->x >= shell_cursor->char_width) {
+        shell_cursor->x -= shell_cursor->char_width;
+    } else if (shell_cursor->y > 0) {
+        shell_cursor->y -= shell_cursor->char_height;
+        shell_cursor->x = fb_width - shell_cursor->char_width;
     }
+
+    draw_char_lim(back_buffer, fb_width, shell_cursor->x, shell_cursor->y, COLOR_BLACK);  
+    cursor_visible = 1;
+    render_cursor_lim(back_buffer, shell_cursor, color);
 }
 
 static void shell_print_prompt() {
     const char* prompt = "<NTux-OS> :";  
     for (int i = 0; prompt[i]; i++)
-        put_char_with_cursor_lim(framebuffer, shell_cursor, prompt[i], color);  
+        put_char_with_cursor_lim(back_buffer, shell_cursor, prompt[i], color);  
 }
 
 static void shell_clear_input() {
     input_len = 0;
     input_buffer[0] = '\0';  
 }
-
 
 static void shell_execute_command(const char* cmd) {
     if (strcmp(cmd, "help") == 0) {
@@ -293,83 +383,54 @@ static void shell_execute_command(const char* cmd) {
         kprint("Rebooting in 1 second...\n");
         sleep_s(1);  
         power_reboot();
-    }else if (strcmp(cmd, "Hello World!") == 0){
+    } else if (strcmp(cmd, "Hello World!") == 0) {
         kprint("Bro why did you type this ??????\n");
-    }else if (strcmp(cmd, "test") == 0){
+    } else if (strcmp(cmd, "test") == 0) {
         play_slainewin_easteregg();
-    }else if (strcmp(cmd, "setbg1") == 0){
+    } else if (strcmp(cmd, "setbg1") == 0) {
         BACKGROUND_WT = BACKGROUND_WIDTH;
         BACKGROUND_HT = BACKGROUND_HEIGHT;
         background_shell  = background;
         shell_clear_screen();
         kprint("seted background 1\n");
-    }else if (strcmp(cmd, "setbg2") == 0){
-        BACKGROUND_WT = BACKGROUND2_WIDTH;
-        BACKGROUND_HT = BACKGROUND2_HEIGHT;
-        background_shell  = background2;
-        shell_clear_screen();
-        kprint("seted background 2\n");
-    }else if (strcmp(cmd, "setbg3") == 0){
-        BACKGROUND_WT = BACKGROUND3_WIDTH;
-        BACKGROUND_HT = BACKGROUND3_HEIGHT;
-        background_shell  = background3;
-        shell_clear_screen();
-        kprint("seted background 3\n");
-    }else if (strcmp(cmd, "setbg4") == 0){
-        BACKGROUND_WT = BACKGROUND4_WIDTH;
-        BACKGROUND_HT = BACKGROUND4_HEIGHT;
-        background_shell  = background4;
-        shell_clear_screen();
-        kprint("seted background 4\n");
-    }else if (strcmp(cmd, "shutdown") == 0) {
-        kprint("Powering off in 3 seconds...\n");
-        sleep_s(1);  
-        kprint("Powering off in 2 seconds...\n");
-        sleep_s(1);  
-        kprint("Powering off in 1 second...\n");
-        sleep_s(1);  
-        power_shutdown();
-    }else if (strcmp(cmd, "cpuinfo") == 0) {
+    } else if (strcmp(cmd, "pcilist") == 0) {
+        pci_list();
+    } else if (strcmp(cmd, "thread_test") == 0) {
+        thread_create(thread1_function);
+        thread_create(thread2_function);
+        thread_yield();
+    } else if (strcmp(cmd, "cpuinfo") == 0) {
         info_cmd_cpuinfo();
+    } else if (strcmp(cmd, "ls") == 0) {
+        fat_ls("/");
+    }else if (strcmp(cmd, "rls") == 0) {
+        ramfs_list_dir("/");  
+    }else if (strncmp(cmd, "rmkdir ", 7) == 0) {        
+    const char* path = cmd + 7;                   
+    while (*path == ' ') path++;
+    
+    if (strlen(path) == 0) {
+        kprint("rmkdir: missing directory name\n");
+    } else {
+        int result = ramfs_mkdir(path);  
+        if (result == 0) {
+            kprint("Directory created: ");
+            kprint(path);
+            kprint("\n");
+        } else {
+            kprint("rmkdir failed ");
+            kprint("\n");
+        }
     }
-    else if (strcmp(cmd, "meminfo") == 0) {
-        info_cmd_meminfo();
-    }
-    else if (strcmp(cmd, "uptime") == 0) {
+} else if (strcmp(cmd, "uptime") == 0) {
         info_cmd_uptime();
     }  else if (strcmp(cmd, "version") == 0) {
         kprint("version 0.0.1 build 15\n");
     } else if (strncmp(cmd, "echo ", 5) == 0) {
         kprint(cmd + 5); 
         kprint("\n");
-    }else if (strncmp(cmd, "rmkdir ", 7) == 0) {        
-        const char* path = cmd + 7;                   
-        while (*path == ' ') path++;
-    
-        if (strlen(path) == 0) {
-            kprint("rmkdir: missing directory name\n");
-        } else {
-            int result = ramfs_mkdir(path);
-            kprint("Directory created: ");
-            kprint(path);
-            kprint("\n");
-        }
-    }else if (strcmp(cmd, "rls") == 0) {
-        ramfs_list_dir("/");
-    }else if (strncmp(cmd, "read ", 5) == 0) {
-    const char* path = cmd + 5;
-    while (*path == ' ' || *path == '\t') path++;  
-
-    if (*path == '\0') {
-        kprintcolor("read: missing file path!\n",COLOR_LIGHT_RED );
-        kprint("Usage: read /readme.txt\n");
-        return;
-    }
-
-    const char * output=ramfs_read_file(path);
-    kprint(output);
-}
-    else if (strlen(cmd) > 0) {
+    } else {
+        if (strlen(cmd) == 0) return;
         kprint("Unknown command: ");
         kprint(cmd);  
         kprint("\n");
@@ -377,62 +438,88 @@ static void shell_execute_command(const char* cmd) {
 }
 
 static void shell_handle_key(char c) {
-    if (cursor_visible) clear_cursor_lim(framebuffer, shell_cursor);
-
-    if (c == '\n') {  
+    if (cursor_visible) clear_cursor_lim(back_buffer, shell_cursor);
+    if (c == '\n') {
         input_buffer[input_len] = '\0';  
         kprint("\n");
         shell_execute_command(input_buffer);
         shell_clear_input();  
         shell_print_prompt();  
-      
-    } else if (c == '\b') {  
-        shell_backspace();  
+    }  else if (c == '\b') {
+        if (input_len > 0) {
+            input_len--;
+            input_buffer[input_len] = '\0';
+            shell_backspace();
+        }
     } else if (c >= 32 && c < 127) {  
         if (input_len < SHELL_MAX_INPUT - 1) {
             input_buffer[input_len++] = c;  
-            put_char_with_cursor_lim(framebuffer, shell_cursor, c, color);  
+            put_char_with_cursor_lim(back_buffer, shell_cursor, c, color);  
         }
     }
     cursor_visible = 1;
-    render_cursor_lim(framebuffer, shell_cursor, color);
+    render_cursor_lim(back_buffer, shell_cursor, color);
+    swap_buffers();
 }
 
 int last_blink_tick = 0;
 
-static void update_cursor_blink(void) {
+void update_cursor_blink(void) {
     if (get_tick_count() - last_blink_tick >= 20) {
         last_blink_tick = get_tick_count();
 
         if (cursor_visible) {
-            clear_cursor_lim(framebuffer, shell_cursor);
+            clear_cursor_lim(back_buffer, shell_cursor);
             cursor_visible = false;
         } else {
-            render_cursor_lim(framebuffer, shell_cursor, color);
+            render_cursor_lim(back_buffer, shell_cursor, color);
             cursor_visible = true;
         }
         last_blink_tick = get_tick_count();
     }
 }
 
+void load_user_space(void) {
+    if (!module_response || module_response->module_count == 0) {
+        kprint("[USERSPACE] Kein init.elf als Modul geladen → bleibe im Kernel\n");
+        return;
+    }
 
-//kernel main function
+    void *init_elf = (void*)module_response->modules[0]->address;
+
+    kprint_ok("[USERSPACE] Lade: ");
+
+    void *entry = elf64_load_and_prepare(init_elf);
+    if (!entry) {
+        kprint_error("[USERSPACE] ELF fehlerhaft oder kaputt!\n");
+        return;
+    }
+
+    kprint_ok("[USERSPACE] Userspace bereit ");
+    kprint("Wechsel in Ring 3...\n");
+    //sleep_s(2);
+
+    //elf64_enter_ring3((uint64_t)entry);
+}
 
 void kmain(void) {
+    module_response = module_request.response;
     last_blink_tick = get_tick_count();
     init_kernel();
     shell_clear_screen();
     kprint("Welcome to NTux-OS!\n");
+    load_user_space();
+    sleep_s(1);
     shell_print_prompt();
     update_cursor_blink();
-    printf("printed per libc\n");
     while (1) {
         keyboard_poll();  
         char c;
-        if(keyboard_getchar(&c)){
-             shell_handle_key(c);
+        if (keyboard_getchar(&c)) {
+            shell_handle_key(c);
         }
         update_cursor_blink();  
+        swap_buffers();  
         __asm__ volatile("hlt");
     }
 }

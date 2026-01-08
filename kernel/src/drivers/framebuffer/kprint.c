@@ -32,36 +32,32 @@ static int itoa_signed(int64_t num, char* str) {
     return i;
 }
 
+// Die verbesserte itoa für die Umwandlung von Zahlen
 void itoa(int num, char* str, int base) {
     int i = 0;
     int isNegative = 0;
+
     if (num == 0) {
         str[i++] = '0';
         str[i] = '\0';
         return;
     }
+
     if (num < 0 && base == 10) {
         isNegative = 1;
-        num = -num;
+        num = -num;  
     }
-    while (num != 0) {
-        int rem = num % base;
-        str[i++] = '0';
-        str[i] = '\0';
-        return;
-    }
-    if (num < 0 && base == 10) {
-        isNegative = 1;
-        num = -num;
-    }
+
     while (num != 0) {
         int rem = num % base;
         str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
         num = num / base;
     }
+
     if (isNegative) {
         str[i++] = '-';
     }
+
     str[i] = '\0'; 
     int start = 0;
     int end = i - 1;
@@ -73,6 +69,7 @@ void itoa(int num, char* str, int base) {
         end--;
     }
 }
+
 
 
 void init_kprint_global(volatile struct limine_framebuffer* fb, cursor_t* cursor, uint32_t color) {

@@ -1,42 +1,58 @@
 #ifndef GDT_H
-#define GDT_H  
+#define GDT_H
 
 #include <stdint.h>
 
 // ---------------------------
 // NTux-OS: Single GDT entry structure
 // ---------------------------
-// Each entry in the Global Descriptor Table (GDT) describes a memory segment.
-// The __attribute__((packed)) ensures the compiler does not add padding between fields.
 struct gdt_entry {
-    uint16_t limit_low;     // Lower 16 bits of the segment limit
-    uint16_t base_low;      // Lower 16 bits of the segment base address
-    uint8_t  base_middle;   // Next 8 bits of the base address
-    uint8_t  access;        // Access flags: present, privilege level, code/data type
-    uint8_t  granularity;   // Granularity flags and high 4 bits of segment limit
-    uint8_t  base_high;     // Highest 8 bits of the base address
+    uint16_t limit_low;
+    uint16_t base_low;
+    uint8_t  base_middle;
+    uint8_t  access;
+    uint8_t  granularity;
+    uint8_t  base_high;
 } __attribute__((packed));
 
 // ---------------------------
 // NTux-OS: GDTR structure
 // ---------------------------
-// This structure is used with the LGDT instruction to load the GDT into the CPU.
-// It contains the size of the GDT and a pointer to its base in memory.
 struct gdt_ptr {
-    uint16_t limit;         // Size of GDT in bytes - 1
-    uint64_t base;          // Address of the first GDT entry
+    uint16_t limit;
+    uint64_t base;
+} __attribute__((packed));
+
+// ---------------------------
+// NTux-OS: 64-bit Task State Segment (TSS)
+// ---------------------------
+struct tss_entry {
+    uint32_t reserved0;
+    uint64_t rsp0;
+    uint64_t rsp1;
+    uint64_t rsp2;
+    uint64_t reserved1;
+    uint64_t ist[7];
+    uint64_t reserved2;
+    uint16_t reserved3;
+    uint16_t iomap_base;
 } __attribute__((packed));
 
 // ---------------------------
 // NTux-OS: GDT entry indices
 // ---------------------------
-// These defines give a human-readable name to each GDT entry index.
-#define GDT_NULL      0      // Null segment (mandatory first entry)
+#define GDT_NULL      0
+#define GDT_CODE64    1
+#define GDT_DATA64    2
+#define GDT_TSS       3   // TSS uses index 3 and 4 (16 bytes = 2 entries)
+
+// Total entries: 6 (0-5)
+#define GDT_ENTRIES   6
 
 // ---------------------------
 // NTux-OS: Function prototypes
 // ---------------------------
-void gdt_init(void);                    // Initialize the GDT and load it
-extern void gdt_load(struct gdt_ptr* gdt_descriptor);  // Assembly function to load GDTR
+void gdt_init(void);
+extern void gdt_load(struct gdt_ptr* gdt_descriptor);
 
 #endif

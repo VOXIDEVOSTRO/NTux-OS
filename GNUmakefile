@@ -5,7 +5,17 @@
 ARCH := x86_64
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
-QEMUFLAGS := -m 4G -M q35 -D qemu_debug.txt -serial stdio   -device ich9-intel-hda -device hda-duplex -d int,cpu_reset,guest_errors,page 
+QEMUFLAGS := -m 16G \
+             -M pc \
+             -D qemu_debug.txt \
+             -serial stdio \
+             -device ich9-intel-hda \
+             -device hda-duplex \
+             -drive file=test.img,format=raw,if=ide \
+             -d int,cpu_reset,guest_errors,page \
+             -device virtio-gpu-pci
+
+
 override IMAGE_NAME := NTux-OS-$(ARCH)
 
 # Toolchain for building the 'limine' executable for the host.
@@ -160,8 +170,11 @@ $(IMAGE_NAME).iso: limine/limine kernel
 	rm -rf iso_root
 	mkdir -p iso_root/boot
 	mkdir -p iso_root/boot/recovery
+	mkdir -p iso_root/boot/res/backgrounds
 	cp -v kernel/bin-$(ARCH)/kernel iso_root/boot/
 	cp -v kernel/bin-$(ARCH)/kernel iso_root/boot/recovery
+	cp -v userspace/init.elf iso_root/boot
+	cp -v res/backgrounds/background.bmp iso_root/boot/res/backgrounds/background.bmp
 	mkdir -p iso_root/boot/limine
 	cp -v limine.conf iso_root/boot/limine/
 	mkdir -p iso_root/EFI/BOOT
