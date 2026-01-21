@@ -791,7 +791,10 @@ static int follow_path(Dir* dir, const char** path, Loc* loc)
 
   if (*str++ != '/')
     return FAT_ERR_PATH;
+
   len = subpath_len(str);
+
+  // WICHTIG: Nur "/" → Root des Volumes ist ungültig, weil kein Volume-Name
   if (len == 0)
     return FAT_ERR_PATH;
 
@@ -799,7 +802,7 @@ static int follow_path(Dir* dir, const char** path, Loc* loc)
   if (!dir->fat)
     return FAT_ERR_PATH;
 
-  // Enter root by default (no entry points to it)
+  // Enter root of this volume
   dir_enter(dir, dir->fat->root_clust);
   dir_clust = dir->clust;
   dir_enterable = true;
@@ -814,8 +817,10 @@ static int follow_path(Dir* dir, const char** path, Loc* loc)
     *path = str;
 
     len = subpath_len(str);
+
+    // Jetzt ist len==0 erlaubt → bedeutet: Ende des Pfads erreicht
     if (len == 0)
-      return FAT_ERR_NONE; // Do not enter directory. Dir points to the SFN of path.
+      return FAT_ERR_NONE;
 
     if (!dir_enterable)
       return FAT_ERR_PATH;
@@ -989,44 +994,37 @@ static bool get_part_lba(uint8_t* buf, int partition, uint32_t* lba)
   if (mbr->sig != 0xaa55)
     return false;
 
-  if (mbr->part[partition].type != 0x0c) // Must be FAT32
+  uint8_t type = mbr->part[partition].type;
+
+  if (type != 0x0b && type != 0x0c)
     return false;
-  
+
   *lba = mbr->part[partition].lba;
   return true;
 }
+
 
 //------------------------------------------------------------------------------
 static bool check_fat(uint8_t* buf)
 {
   Bpb* bpb = (Bpb*)buf;
-  
+
   if (bpb->jump[0] != 0xeb && bpb->jump[0] != 0xe9)
     return false;
 
-  // Check if we need to be this strict.
-  if (bpb->fat_cnt != 2)
-    return false;
-  
-  if (bpb->root_ent_cnt || bpb->sect_cnt_16 || bpb->sect_per_fat_16)
-    return false;
-  
-  if (bpb->info_sect != 1)
-    return false;
-
-  if (memcmp(bpb->fs_type, "FAT32   ", 8))
-    return false;
-    
   if (bpb->bytes_per_sect != 512)
     return false;
-  
-  // Only two FAT tables should exist
-  if (!(bpb->ext_flags & EXT_FLAG_MIRROR) && (bpb->ext_flags & EXT_FLAG_ACT) > 1)
+
+  if (bpb->sect_per_clust == 0)
     return false;
-  
-  // FAT type is determined from the count of clusters
-  uint32_t sect_cnt = bpb->sect_cnt_32 - (bpb->res_sect_cnt + bpb->fat_cnt * bpb->sect_per_fat_32);
-  return sect_cnt/ bpb->sect_per_clust >= 65525;
+
+  if (bpb->sect_per_fat_32 == 0)
+    return false;
+
+  uint32_t data_sect = bpb->sect_cnt_32 - (bpb->res_sect_cnt + bpb->fat_cnt * bpb->sect_per_fat_32);
+  uint32_t clust_cnt = data_sect / bpb->sect_per_clust;
+
+  return clust_cnt >= 65525;
 }
 
 //------------------------------------------------------------------------------
@@ -1077,7 +1075,6 @@ int fat_mount(DiskOps* ops, int partition, Fat* fat, const char* name)
   if (err)
     return err;
 
-  // Global buffer contains BPB when probe succeeds
   Bpb* bpb = (Bpb*)g_buf;
 
   bool mirror    = (bpb->ext_flags & EXT_FLAG_MIRROR) != 0;
@@ -1087,43 +1084,57 @@ int fat_mount(DiskOps* ops, int partition, Fat* fat, const char* name)
   uint32_t fat_1 = lba + bpb->res_sect_cnt + bpb->sect_per_fat_32;
   
   fat->clust_shift = __builtin_ctz(bpb->sect_per_clust);
-  fat->clust_msk = bpb->sect_per_clust - 1;
-  fat->clust_cnt = bpb->sect_per_fat_32 * 128;
+  fat->clust_msk   = bpb->sect_per_clust - 1;
+
+  uint32_t data_sect = bpb->sect_cnt_32 - (bpb->res_sect_cnt + bpb->fat_cnt * bpb->sect_per_fat_32);
+  fat->clust_cnt = data_sect / bpb->sect_per_clust;
+
   fat->root_clust = bpb->root_cluster;
   fat->fat_sect[0] = use_first ? fat_0 : fat_1;
   fat->fat_sect[1] = mirror ? (use_first ? fat_1 : fat_0) : 0;
-  fat->info_sect = lba + bpb->info_sect;
-  fat->data_sect = lba + bpb->res_sect_cnt + bpb->fat_cnt * bpb->sect_per_fat_32;
+  fat->info_sect   = lba + bpb->info_sect;
+  fat->data_sect   = lba + bpb->res_sect_cnt + bpb->fat_cnt * bpb->sect_per_fat_32;
 
-  // Load FsInfo
   if (!ops->read(g_buf, fat->info_sect))
     return FAT_ERR_IO;
 
   FsInfo* info = (FsInfo*)g_buf;
-  if (info->tail_sig != FSINFO_TAIL_SIG || 
-      info->head_sig != FSINFO_HEAD_SIG ||
-      info->struct_sig != FSINFO_STRUCT_SIG ||
-      info->next_free == 0xffffffff || 
-      info->free_cnt == 0xffffffff)
-    return FAT_ERR_NOFAT;
-  
-  fat->last_used = info->next_free;
-  fat->free_cnt  = info->free_cnt;
+
+  if (info->tail_sig == FSINFO_TAIL_SIG &&
+      info->head_sig == FSINFO_HEAD_SIG &&
+      info->struct_sig == FSINFO_STRUCT_SIG)
+  {
+    fat->last_used = (info->next_free == 0xffffffff) ? 2 : info->next_free;
+    fat->free_cnt  = info->free_cnt;
+  }
+  else
+  {
+    fat->last_used = 2;
+    fat->free_cnt  = 0xffffffff;
+  }
 
   int name_len = strlen(name);
-  if (name_len > sizeof(fat->name))
+  if (name_len > (int)sizeof(fat->name))
     return FAT_ERR_PARAM;
-  memcpy(fat->name, name, name_len);
-  fat->name_len = name_len;
 
-  fat->ops = *ops;
-  fat->sect = 0;   // Causes buffering on first call
+  memset(fat->name, 0, sizeof(fat->name));
+  memcpy(fat->name, name, name_len);
+   fat->name_len = name_len;
+
+  fat->ops  = *ops;
+  fat->sect = 0;
 
   fat->next = g_fat_list;
   g_fat_list = fat;
+  kprint("Mounted volume name: '");
+  for (int i = 0; i < fat->name_len; i++)
+      kprintf("%c", fat->name[i]);
+
+  kprint("'\n");
 
   return FAT_ERR_NONE;
 }
+
 
 //------------------------------------------------------------------------------
 // Syncronizes unwritten changes and removes the fat from the global list. All

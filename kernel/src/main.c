@@ -23,7 +23,6 @@
 #include <drivers/framebuffer/kprint.h>
 #include <drivers/audio/audio.h>
 #include <drivers/fs/FAT/fat32.h>
-#include <drivers/gpu/virtio/virtio.h>
 #include <drivers/sata/ata.h>
 #include <drivers/ps2/mose.h>
 
@@ -63,7 +62,6 @@ static Fat fat;
 
 static int BACKGROUND_WT;
 static int BACKGROUND_HT;
-static virtio_gpu_t virtio_gpu; 
 static uint64_t background_shell;
 
 volatile struct limine_framebuffer* front_buffer;
@@ -148,45 +146,78 @@ void init_ramfs_test() {
     ramfs_list_dir("/");
 }
 
-void init_fs(void) {
-    if (!ata_init()) {
-        kprint("no ata device found\n");
+void fat_test(void) {
+    kprint("Running FAT32 startup test...\n");
+
+    DirInfo info;
+    int err = fat_stat("/disk0", &info);
+
+    if (err != FAT_ERR_NONE) {
+        kprint_error("Cannot stat /disk0: ");
+        kprint_error(fat_get_error(err));
+        kprint("\n");
         return;
     }
 
-    kprint_ok("ata device found\n");
+    kprint_ok("/disk0 is accessible\n");
+
+    kprint("Listing /disk0:\n");
+    fat_ls("/disk0");
+
+    kprint_ok("FAT32 startup test completed\n");
+}
+
+
+void init_fs(void) {
+    if (!ata_init()) {
+        kprint_error("No ATA device found\n");
+        return;
+    }
+
+    kprint_ok("ATA device detected\n");
 
     uint64_t bytes = ata_get_total_space_bytes();
-    kprint("Total ATA device size: ");
-    kprint_uint(bytes / (1024 * 1024 * 1024)); 
-    kprint(" GiB (");
+    uint64_t sectors = bytes / 512;
+
+    kprint("Disk detected:\n");
+
+    kprint(" - Size: ");
+    kprint_uint(bytes / (1024 * 1024 * 1024));
+    kprint(" GiB\n");
+
+    kprint(" - Size (MB): ");
+    kprint_uint(bytes / (1024 * 1024));
+    kprint(" MB\n");
+
+    kprint(" - Bytes: ");
     kprint_uint(bytes);
-    kprint(" bytes)\n");
+    kprint("\n");
+
+    kprint(" - Sectors: ");
+    kprint_uint(sectors);
+    kprint("\n");
+
+    kprint(" - Sector size: 512 bytes\n");
 
     DiskOps ops;
     if (!ata_get_disk_ops(&ops)) {
-        kprint_error("failed to get disk operations\n");
+        kprint_error("Failed to load DiskOps\n");
         return;
     }
 
     uint8_t buf[512];
     if (!ops.read(buf, 0)) {
-        kprint_error("failed to read MBR (sector 0)\n");
+        kprint_error("Failed to read MBR (sector 0)\n");
         return;
     }
 
-    kprint("MBR signature: 0x");
-    kprinthex(buf[510]);
-    kprinthex(buf[511]);
-    kprint("  ");
-    
-    if (buf[510] == 0x55 && buf[511] == 0xAA) {
-        kprint_ok("valid\n");
-    } else {
-        kprint_error("invalid! (not a bootable disk)\n");
-    }
+    if (buf[510] == 0x55 && buf[511] == 0xAA)
+        kprint_ok("Valid MBR signature\n");
+    else
+        kprint_error("Invalid MBR signature\n");
 
-    kprint("Probing FAT32 filesystem...\n");
+    kprint("Probing for FAT32 filesystem...\n");
+
     int err = fat_probe(&ops, 0);
     if (err != FAT_ERR_NONE) {
         kprint_error("FAT32 probe failed: ");
@@ -197,7 +228,8 @@ void init_fs(void) {
 
     kprint_ok("FAT32 filesystem detected\n");
 
-    err = fat_mount(&ops, 0, &fat, "/");
+    static Fat fat;
+    err = fat_mount(&ops, 0, &fat, "disk0");
     if (err != FAT_ERR_NONE) {
         kprint_error("FAT32 mount failed: ");
         kprint_error(fat_get_error(err));
@@ -205,12 +237,11 @@ void init_fs(void) {
         return;
     }
 
-    kprint_ok("FAT32 mounted successfully\n");
+    kprint_ok("FAT32 mounted successfully at /disk0\n");
 
-    kprint("Root directory contents:\n");
-    fat_ls("/");
-    sleep_s(10);
+    fat_test();   
 }
+
 
 void init_mem(void) {
     kprint_ok("initing mem ");
@@ -256,7 +287,6 @@ void init_drivers(void) {
     bool connected = mouse_init();
     is_mouse_connected = connected;
     kprint_ok("PS/2 Mouse found and initialized");
-    pci_init();
     kprint_ok("PCI bus initialized");
     beep(440, 5);
     kprint_ok("Audio initialized");
@@ -277,14 +307,7 @@ void thread2_function(void) {
 }
 
 void init_gpu(void){
-    pci_device_t *device = pci_find_device(0x1AF4, 0x1050);
-    if (device != NULL) {
-        virtio_gpu_init(device);  
-    } else {
-        kprint_error("Virtio GPU not found!\n");
-    }
-    virtio_gpu_draw_line(10, 10, 200, 150, COLOR_RED);
-    virtio_gpu_draw_text(50, 50, "Hello from Virtio GPU!", COLOR_GREEN);
+    
 }
 
 void init_kernel(void) {
@@ -304,7 +327,7 @@ void init_kernel(void) {
     running = false;
     kprint_ok(boolean_to_string(running));
     kprint("\n");
-    int second = 3;
+    int second = 100;
     kprint("Sleeping for 3 seconds...\n");
     sleep_s(second);
     kprint_ok("Kernel initialized.");
@@ -394,7 +417,6 @@ static void shell_execute_command(const char* cmd) {
         shell_clear_screen();
         kprint("seted background 1\n");
     } else if (strcmp(cmd, "pcilist") == 0) {
-        pci_list();
     } else if (strcmp(cmd, "thread_test") == 0) {
         thread_create(thread1_function);
         thread_create(thread2_function);
